@@ -50,7 +50,7 @@ app.include_router(notes.router)
 
 
 @app.get("/")
-def health_check():
+def root_info():
     return {
         "status": "healthy",
         "app": "Adaptive Learning Platform Prototype",
@@ -58,3 +58,10 @@ def health_check():
         "environment": settings.ENVIRONMENT,
         "ai_provider": settings.AI_PROVIDER
     }
+
+
+@app.get("/health")
+def health_check():
+    """Lightweight health check endpoint for Render free tier liveness probes."""
+    return {"status": "ok"}
+

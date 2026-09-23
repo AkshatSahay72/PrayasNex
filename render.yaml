@@ -1,20 +1,21 @@
 services:
   - type: web
     name: prayasnex-backend
-    env: python
+    runtime: python
     region: oregon
-    plan: free
+    plan: free # Render Free Tier Web Service
+    healthCheckPath: /health # Rapid liveness probe for cold start recovery
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --workers 1"
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.0
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
-        sync: false # Set your Neon Postgres connection string here (e.g. postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require)
+        sync: false # Set to your Neon PostgreSQL connection string (e.g. postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require)
       - key: GROQ_API_KEY
-        sync: false # Set your Groq API key in Render dashboard
+        sync: false # Set your Groq API key in Render Dashboard
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: AI_PROVIDER

@@ -18,6 +18,13 @@ def test_health_endpoint():
     assert data["status"] == "healthy"
 
 
+def test_render_health_probe():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+
 def test_get_subjects_and_topics():
     response = client.get("/api/subjects?student_id=demo-student-1")
     assert response.status_code == 200
