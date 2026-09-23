@@ -102,8 +102,15 @@ def get_student_dashboard(student_id: str, db: Session = Depends(get_db)):
     )
 
     total_attempts = sum(p.attempts_count for p in all_progress)
-    scores = [p.mastery_score for p in all_progress if p.attempts_count > 0]
+    scores = []
+    for p in all_progress:
+        if p.attempts_count > 0:
+            # Safely normalize in case any legacy record was saved on 0-100 scale
+            s = p.mastery_score / 100.0 if (p.mastery_score and p.mastery_score > 1.0) else (p.mastery_score or 0.0)
+            scores.append(s)
+    
     overall_mastery = (sum(scores) / len(scores)) if scores else 0.0
+    overall_mastery = min(1.0, max(0.0, overall_mastery))
 
     weak_items = []
     all_progress_items = []
@@ -114,6 +121,8 @@ def get_student_dashboard(student_id: str, db: Session = Depends(get_db)):
         topic_name = concept.topic.name if concept and concept.topic else ""
         topic_id = concept.topic_id if concept else ""
 
+        norm_item_score = p.mastery_score / 100.0 if (p.mastery_score and p.mastery_score > 1.0) else (p.mastery_score or 0.0)
+
         item = ConceptProgressItem(
             concept_id=p.concept_id,
             concept_name=concept_name,
@@ -121,7 +130,7 @@ def get_student_dashboard(student_id: str, db: Session = Depends(get_db)):
             topic_name=topic_name,
             attempts_count=p.attempts_count,
             correct_count=p.correct_count,
-            mastery_score=p.mastery_score,
+            mastery_score=norm_item_score,
             status=p.status,
             last_updated=p.last_updated
         )

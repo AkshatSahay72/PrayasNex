@@ -62,7 +62,7 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
         <div className="p-4 rounded-lg bg-[#11151e] border border-[#222938]">
           <div className="text-xs text-[#738096]">Overall mastery</div>
           <div className="text-2xl font-bold text-white mt-1">
-            {Math.round(dashboard.overall_mastery * 100)}%
+            {Math.min(100, Math.max(0, Math.round(dashboard.overall_mastery > 1 ? dashboard.overall_mastery : dashboard.overall_mastery * 100)))}%
           </div>
         </div>
 
@@ -101,42 +101,55 @@ export const ProgressPage: React.FC<ProgressPageProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1e2432]">
-              {dashboard.all_progress.map((prog) => (
-                <tr key={prog.concept_id} className="hover:bg-[#151a25] transition-colors">
-                  <td className="px-4 py-3 font-medium text-white">
-                    {prog.concept_name}
-                  </td>
-                  <td className="px-4 py-3 text-[#7f8ba0]">
-                    Optimization
-                  </td>
-                  <td className="px-4 py-3 text-[#7f8ba0]">
-                    {prog.attempts_count}
-                  </td>
-                  <td className="px-4 py-3 text-[#7f8ba0]">
-                    {prog.correct_count}
-                  </td>
-                  <td className="px-4 py-3 text-white font-medium">
-                    {Math.round(prog.mastery_score * 100)}%
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={prog.status} />
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-1.5">
-                    <button
-                      onClick={() => onSelectConcept(prog.concept_id)}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-[#191f2c] hover:bg-[#222a3b] text-[#9ba7ba] border border-[#283142] rounded transition-colors"
-                    >
-                      Note
-                    </button>
-                    <button
-                      onClick={() => onStartTest(prog.concept_id)}
-                      className="px-2.5 py-1 text-[11px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                    >
-                      Test
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {dashboard.all_progress.map((prog) => {
+                const masteryVal = Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Math.round(
+                      prog.mastery_score > 1
+                        ? prog.mastery_score
+                        : prog.mastery_score * 100
+                    )
+                  )
+                );
+                return (
+                  <tr key={prog.concept_id} className="hover:bg-[#151a25] transition-colors">
+                    <td className="px-4 py-3 font-medium text-white">
+                      {prog.concept_name}
+                    </td>
+                    <td className="px-4 py-3 text-[#7f8ba0]">
+                      {prog.topic_name || 'General'}
+                    </td>
+                    <td className="px-4 py-3 text-[#7f8ba0]">
+                      {prog.attempts_count}
+                    </td>
+                    <td className="px-4 py-3 text-[#7f8ba0]">
+                      {prog.correct_count}
+                    </td>
+                    <td className="px-4 py-3 text-white font-medium">
+                      {prog.attempts_count > 0 ? `${masteryVal}%` : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={prog.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right space-x-1.5">
+                      <button
+                        onClick={() => onSelectConcept(prog.concept_id)}
+                        className="px-2.5 py-1 text-[11px] font-medium bg-[#191f2c] hover:bg-[#222a3b] text-[#9ba7ba] border border-[#283142] rounded transition-colors"
+                      >
+                        Note
+                      </button>
+                      <button
+                        onClick={() => onStartTest(prog.concept_id)}
+                        className="px-2.5 py-1 text-[11px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                      >
+                        Test
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

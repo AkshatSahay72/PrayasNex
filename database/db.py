@@ -67,6 +67,7 @@ def migrate_schema():
             "ALTER TABLE notes ALTER COLUMN id TYPE VARCHAR(512);",
             "ALTER TABLE notes ALTER COLUMN concept_id TYPE VARCHAR(256);",
             "ALTER TABLE notes ALTER COLUMN title TYPE VARCHAR(256);",
+            "UPDATE student_concept_progress SET mastery_score = mastery_score / 100.0 WHERE mastery_score > 1.0;"
         ]
         with engine.begin() as conn:
             for sql in alters:

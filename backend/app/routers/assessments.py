@@ -297,7 +297,8 @@ def submit_diagnostic_test(
                 strong_count += 1
                 rec_msg = f"Mastered baseline for {concept.name}. Ready for advanced applications."
 
-            # Update or create StudentConceptProgress
+            # Update or create StudentConceptProgress (normalized 0.0 to 1.0)
+            norm_score = pct / 100.0 if pct > 1.0 else pct
             progress = (
                 db.query(StudentConceptProgress)
                 .filter(
@@ -313,7 +314,7 @@ def submit_diagnostic_test(
                     concept_id=concept.id,
                     attempts_count=c_total,
                     correct_count=c_correct,
-                    mastery_score=pct,
+                    mastery_score=norm_score,
                     status=status,
                     last_updated=now
                 )
@@ -321,7 +322,7 @@ def submit_diagnostic_test(
             else:
                 progress.attempts_count = (progress.attempts_count or 0) + c_total
                 progress.correct_count = (progress.correct_count or 0) + c_correct
-                progress.mastery_score = pct
+                progress.mastery_score = norm_score
                 progress.status = status
                 progress.last_updated = now
 
