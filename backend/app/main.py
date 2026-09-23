@@ -31,10 +31,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS for frontend access
+# Configure CORS for frontend access (supporting localhost and Vercel domains)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.ENVIRONMENT == "development" else settings.cors_origins_list,
+    allow_origins=["*"] if settings.ENVIRONMENT == "development" or "*" in settings.cors_origins_list else settings.cors_origins_list,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
