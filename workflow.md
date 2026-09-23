@@ -1,742 +1,124 @@
-# Adaptive Learning Platform --- Prototype Workflow
+# PRAYASNEX --- Development Workflow
 
-## 1. Purpose
+## Startup
 
-This workflow defines exactly how the prototype should be developed.
+Every developer/agent must: 1. Read `instruction.md`. 2. Read
+`workflow.md`. 3. Read their `team/<role>.md`. 4. Run `git status`. 5.
+Inspect the repository and existing implementation. 6. Identify
+ownership and dependencies. 7. Write a short implementation plan.
 
-The project should be developed as **one small complete system**, not as
-six independent pieces that only work at the end.
-
-The main objective is to reach a working vertical slice quickly:
-
-``` text
-Frontend
-   ↓
-Backend
-   ↓
-Database
-   ↓
-Assessment
-   ↓
-Student Evidence
-   ↓
-Adaptive Recommendation
-   ↓
-Frontend
-```
-
-AI is an enhancement inside this loop, not a dependency that blocks the
-entire system.
-
-------------------------------------------------------------------------
-
-# 2. Before Starting Any Work
-
-Every developer or Antigravity agent must do this first:
-
-### Step 1
-
-Read:
+## Ownership
 
 ``` text
-instruction.md
+backend/                         → Backend
+frontend/                        → Frontend
+ai/                              → AI Question Engine
+database/knowledge/              → Knowledge Graph
+backend/app/services/adaptive/   → Adaptive Engine
+.github/, tests/, scripts/       → DevOps/QA
 ```
 
-### Step 2
+Shared files require coordination.
 
-Inspect the repository:
+## Development Sequence
 
 ``` text
-git status
+Understand → Inspect → Plan → Implement → Test → Diff Review → Commit → Push
 ```
 
-Then inspect:
+Never rewrite unrelated working code.
 
--   existing directories
--   existing package files
--   backend files
--   frontend files
--   database files
--   tests
--   environment configuration
--   README
-
-### Step 3
-
-Do not immediately start creating files.
-
-First determine:
-
--   what already exists
--   what is missing
--   which feature is currently being implemented
--   whether another feature already provides part of the required
-    behavior
-
-### Step 4
-
-Write a short implementation plan.
-
-Example:
+## AI Workflow
 
 ``` text
-1. Add Concept model
-2. Add Question model
-3. Add endpoint for questions
-4. Add test submission endpoint
-5. Store attempts
-6. Calculate concept score
-7. Return recommendation
-8. Connect frontend results page
+Request
+→ Prompt
+→ Groq
+→ Parse
+→ Schema validation
+→ Deterministic validation
+→ Quality validation
+→ Accept OR reject/retry
 ```
 
-Then implement.
+Raw AI output must never go directly to the student.
 
-------------------------------------------------------------------------
-
-# 3. Development Order
-
-Build the prototype in this order.
-
-## Phase 1 --- Project Skeleton
-
-Create the basic structure:
+## Assessment Workflow
 
 ``` text
-adaptive-learning/
-├── frontend/
-├── backend/
-├── ai/
-├── database/
-├── tests/
-├── scripts/
-├── instruction.md
-├── workflow.md
-└── README.md
+Backend selects question
+→ strip correct answer
+→ frontend displays
+→ student submits
+→ backend evaluates
+→ store attempt
+→ update progress
+→ adaptive recommendation
 ```
 
-Make sure frontend and backend can start independently.
-
-Do not implement advanced functionality yet.
-
-------------------------------------------------------------------------
-
-# 4. Phase 2 --- Database
-
-Create the minimal SQLite data model.
-
-Recommended:
+## Adaptive Workflow
 
 ``` text
-students
-subjects
-topics
-concepts
-questions
-attempts
-student_concept_progress
-notes
+Evidence → Concept Score → Mastery State → Prerequisite State → Recommendation
 ```
 
-Seed a small amount of demonstration data.
+Do not call Groq for deterministic routing.
 
-For example:
+## Database Workflow
+
+Inspect current schema first. Make compatible changes. Preserve student
+history. Test both clean initialization and relevant existing-data
+behavior.
+
+## Frontend Workflow
+
+Inspect components and API contracts first. Reuse existing patterns.
+Implement loading, empty, error and success states. Do not put
+authoritative business logic in React.
+
+## Testing
+
+Backend:
 
 ``` text
-Machine Learning
-└── Optimization
-    ├── Gradient
-    ├── Learning Rate
-    └── Gradient Descent
+pytest
 ```
 
-Create enough questions to run a complete demonstration.
-
-Do not spend time creating hundreds of questions.
-
-------------------------------------------------------------------------
-
-# 5. Phase 3 --- Backend Foundation
-
-Implement FastAPI.
-
-Start with:
+Frontend:
 
 ``` text
-GET /subjects
-GET /subjects/{id}/topics
-GET /concepts/{id}
-GET /questions
-POST /attempts
-GET /students/{id}/progress
-GET /recommendations/{student_id}
-GET /notes/{concept_id}
+npm run build
 ```
 
-Only add endpoints when the UI actually requires them.
+Also run adaptive, assessment privacy and AI validator regression tests.
 
-For every endpoint:
+## Git
 
-1.  define input
-2.  validate input
-3.  perform service operation
-4.  return structured output
-5.  test success
-6.  test at least one failure case
-
-------------------------------------------------------------------------
-
-# 6. Phase 4 --- Assessment
-
-Implement the first complete test flow before adding AI generation.
-
-The backend should:
-
-``` text
-Select questions
-    ↓
-Send question WITHOUT answer
-    ↓
-Student submits selected options
-    ↓
-Backend evaluates
-    ↓
-Store attempts
-    ↓
-Calculate score
-```
-
-Never send:
-
-``` text
-correct_option
-```
-
-to the active test frontend.
-
-------------------------------------------------------------------------
-
-# 7. Phase 5 --- Student Progress
-
-After an assessment:
-
-``` text
-attempts
-   ↓
-group by concept
-   ↓
-calculate performance
-   ↓
-update StudentConceptProgress
-```
-
-Prototype calculation can be simple.
-
-Example:
-
-``` text
-5 attempts
-4 correct
-= 80%
-```
-
-Store enough information to explain why the recommendation was made.
-
-------------------------------------------------------------------------
-
-# 8. Phase 6 --- Adaptive Logic
-
-Implement the simplest useful rule engine.
-
-Example:
-
-``` text
-< 50%
-    WEAK
-    → review concept
-
-50–79%
-    NEEDS PRACTICE
-    → practice again
-
-80%+
-    STRONG
-    → move forward
-```
-
-If prerequisite information exists:
-
-``` text
-Weak Concept
-    ↓
-Check prerequisite
-    ↓
-Prerequisite weak?
-    ├── yes → recommend prerequisite
-    └── no → recommend current concept practice
-```
-
-Do not build a machine-learning recommender.
-
-Do not call an LLM for these decisions.
-
-------------------------------------------------------------------------
-
-# 9. Phase 7 --- Personalized Notes
-
-Start with static Markdown notes.
-
-Example:
-
-``` text
-notes/
-├── gradient.md
-├── learning-rate.md
-└── gradient-descent.md
-```
-
-Make sure the frontend can render them.
-
-Only after that works should AI-generated notes be introduced.
-
-AI-generated notes should have the same output shape as normal notes so
-the frontend does not care whether a note was generated or static.
-
-------------------------------------------------------------------------
-
-# 10. Phase 8 --- AI Question Generation
-
-Only add AI after the normal assessment system works.
-
-Implement:
-
-``` text
-POST /questions/generate
-```
-
-The AI service should receive:
-
-``` text
-subject
-topic
-concept
-difficulty
-learning objective
-optional source/context
-```
-
-Expected structured output:
-
-``` json
-{
-  "question": "...",
-  "options": [
-    {"id": "A", "text": "..."},
-    {"id": "B", "text": "..."},
-    {"id": "C", "text": "..."},
-    {"id": "D", "text": "..."}
-  ],
-  "correct_option": "B",
-  "explanation": "...",
-  "concept_id": "ml.optimization.gradient_descent",
-  "difficulty": "medium"
-}
-```
-
-Then validate it.
-
-------------------------------------------------------------------------
-
-# 11. AI Validation Workflow
-
-Every generated question follows:
-
-``` text
-Generate
-   ↓
-Parse JSON
-   ↓
-Schema Validation
-   ↓
-Rule Validation
-   ↓
-Semantic/quality checks
-   ↓
-PASS ─────────→ Store
-   │
-   FAIL
-   ↓
-Retry / Reject
-```
-
-### Minimum validation
-
-Check:
-
--   all required fields exist
--   exactly four options
--   option IDs are unique
--   correct option exists
--   no duplicate options
--   question is not empty
--   explanation exists
--   concept exists
--   difficulty is valid
--   options are not wildly unbalanced in length
--   distractors are relevant
--   no obviously unrelated answer
--   no multiple obvious correct answers
-
-------------------------------------------------------------------------
-
-# 12. Phase 9 --- Frontend
-
-Build the UI around the working backend.
-
-Implement in this order:
-
-``` text
-1. Dashboard
-2. Subject/topic selection
-3. Learning note
-4. Test screen
-5. Results screen
-6. Recommendation screen
-```
-
-Do not build a large dashboard before the learning loop works.
-
-------------------------------------------------------------------------
-
-# 13. Phase 10 --- Connect the Complete Loop
-
-Now test this exact scenario:
-
-``` text
-Open app
-   ↓
-Select Machine Learning
-   ↓
-Select Optimization
-   ↓
-Open Gradient Descent
-   ↓
-Read note
-   ↓
-Start test
-   ↓
-Answer 5 questions
-   ↓
-Submit
-   ↓
-Receive result
-   ↓
-Progress updates
-   ↓
-Weak concept detected
-   ↓
-Recommendation appears
-   ↓
-Student opens recommended note
-```
-
-If this works, the core prototype is working.
-
-------------------------------------------------------------------------
-
-# 14. Testing Workflow
-
-Every meaningful feature should have tests.
-
-## Backend
-
-Test:
-
--   valid requests
--   invalid requests
--   database operations
--   answer evaluation
--   progress calculation
--   recommendation rules
-
-## AI
-
-Test:
-
--   valid output
--   malformed JSON
--   missing fields
--   invalid correct option
--   irrelevant distractor
--   oversized correct option
--   multiple correct answers
-
-## Frontend
-
-At minimum verify:
-
--   pages render
--   API data displays
--   answer submission works
--   results appear
--   recommendation appears
--   loading/error states work
-
-------------------------------------------------------------------------
-
-# 15. Manual Demo Test
-
-Before showing the instructor, perform one clean manual run.
-
-### Test student
-
-Use one demonstration student.
-
-### Test subject
-
-``` text
-Machine Learning
-```
-
-### Test topic
-
-``` text
-Optimization
-```
-
-### Test concept
-
-``` text
-Gradient Descent
-```
-
-### Test
-
-Answer deliberately so the system produces a weak result.
-
-Example:
-
-``` text
-2 / 5
-```
-
-Confirm:
-
-``` text
-Score = 40%
-Status = Weak
-Recommendation = Review concept
-```
-
-Then perform another attempt with a better result.
-
-Confirm that the recommendation changes appropriately.
-
-This proves that the system is actually adaptive.
-
-------------------------------------------------------------------------
-
-# 16. Git Workflow
-
-Use a simple branch structure for the prototype.
+Recommended branches:
 
 ``` text
 main
-│
-├── feature/backend
-├── feature/frontend
-├── feature/ai
-└── feature/qa
+feature/backend
+feature/frontend
+feature/ai-question-engine
+feature/knowledge-graph
+feature/adaptive-engine
+feature/devops-qa
 ```
 
-If the team is smaller, fewer branches are acceptable.
+Never force-push, hard-reset shared work, or auto-merge.
 
-Rules:
+## Completion Report
 
--   do not work directly on main
--   do not force-push
--   do not hard-reset shared work
--   do not commit secrets
--   pull/rebase only when coordinated
--   inspect diff before commit
--   run tests before push
-
-Use conventional commits:
+Report:
 
 ``` text
-feat: add concept assessment API
-feat: add adaptive recommendation
-fix: prevent answer leakage
-test: add question validation tests
+Task
+Implemented
+Changed files
+Tests
+Build status
+Branch
+Commit
+Known limitations
 ```
-
-------------------------------------------------------------------------
-
-# 17. When to Commit
-
-Do not make one enormous commit.
-
-Commit after a coherent unit works.
-
-Good:
-
-``` text
-feat: add assessment models
-feat: add assessment submission API
-feat: add concept progress calculation
-feat: add adaptive recommendation
-feat: add test results UI
-```
-
-Avoid:
-
-``` text
-final-final-working-version
-```
-
-------------------------------------------------------------------------
-
-# 18. AI Cost Control
-
-During development:
-
--   use seeded questions first
--   avoid regenerating the same questions
--   cache AI responses when practical
--   use static notes while building UI
--   call the LLM only when testing the AI feature
--   do not use the LLM for deterministic logic
-
-This keeps development cheap and predictable.
-
-------------------------------------------------------------------------
-
-# 19. What To Do If Something Breaks
-
-Follow this order:
-
-``` text
-1. Read the error
-2. Find the exact failing file
-3. Reproduce the failure
-4. Determine whether it is frontend, backend, database, AI or environment
-5. Inspect existing code
-6. Make the smallest fix
-7. Run the previously failing test
-8. Run related tests
-9. Inspect diff
-```
-
-Do not immediately rewrite the whole feature.
-
-------------------------------------------------------------------------
-
-# 20. Cross-Team Changes
-
-If one person needs another person's component:
-
-Example:
-
-``` text
-Frontend needs:
-GET /recommendations/{student_id}
-```
-
-Do not modify backend yourself.
-
-Instead:
-
-``` text
-Frontend
-   ↓
-Document required response
-   ↓
-Backend implements contract
-   ↓
-Frontend integrates
-```
-
-Keep the interface explicit.
-
-Example:
-
-``` json
-{
-  "concept_id": "ml.optimization.gradient_descent",
-  "status": "weak",
-  "recommendation": "Review Gradient Descent",
-  "reason": "Performance below the prototype threshold."
-}
-```
-
-------------------------------------------------------------------------
-
-# 21. Final Prototype Checklist
-
-Before calling the prototype complete:
-
-### Application
-
--   [ ] frontend starts
--   [ ] backend starts
--   [ ] SQLite initializes
--   [ ] seed data loads
-
-### Learning
-
--   [ ] subject selection works
--   [ ] topic selection works
--   [ ] concept page works
--   [ ] notes display
--   [ ] test starts
--   [ ] questions display
--   [ ] answers submit
--   [ ] backend evaluates answers
--   [ ] attempts are stored
-
-### Adaptation
-
--   [ ] concept score calculated
--   [ ] weak concept identified
--   [ ] recommendation generated
--   [ ] recommendation visible in UI
--   [ ] second attempt changes evidence
-
-### AI
-
--   [ ] generated question has structured output
--   [ ] generated question is validated
--   [ ] invalid questions are rejected
--   [ ] AI failure does not crash the application
-
-### Security
-
--   [ ] correct answers hidden during test
--   [ ] secrets not committed
--   [ ] backend validates requests
-
-### Quality
-
--   [ ] tests pass
--   [ ] frontend build passes
--   [ ] no unnecessary infrastructure
--   [ ] README contains setup instructions
--   [ ] instructor demo can be completed from a clean start
-
-------------------------------------------------------------------------
-
-# 22. Prototype Completion Rule
-
-Do not add another major feature merely because the prototype looks
-small.
-
-The prototype is successful when it proves:
-
-> A student's performance on specific concepts can be recorded,
-> analyzed, and used to change the next learning recommendation.
-
-Everything else is secondary.
-
-Once this vertical slice works reliably, the project can be expanded
-toward the full production architecture without throwing away the
-prototype.
