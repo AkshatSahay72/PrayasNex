@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,19 +9,30 @@ from backend.app.models.schema import Student
 from backend.app.routers import subjects, concepts, assessments, recommendations, notes
 
 
+def _init_database_sync():
+    """Initializes schema and seeds demonstration data in a background thread."""
+    try:
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        try:
+            has_student = db.query(Student).first()
+            if not has_student:
+                print("Seeding database on initial application startup...")
+                seed_database()
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"Database initialization warning (deferred/skipped): {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initializes tables and seeds database if empty on startup."""
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        # Check if database has been seeded
-        has_student = db.query(Student).first()
-        if not has_student:
-            print("Seeding database on initial application startup...")
-            seed_database()
-    finally:
-        db.close()
+    """
+    Non-blocking lifespan manager.
+    Runs database schema verification in a background worker thread
+    so Uvicorn immediately binds to $PORT without blocking on Render/Neon cold starts.
+    """
+    asyncio.create_task(asyncio.to_thread(_init_database_sync))
     yield
 
 
@@ -31,7 +43,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS for frontend access (supporting localhost and Vercel domains)
+# Configure CORS for frontend access (supporting localhost, custom domains, and Vercel deployments)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.ENVIRONMENT == "development" or "*" in settings.cors_origins_list else settings.cors_origins_list,
@@ -62,6 +74,5 @@ def root_info():
 
 @app.get("/health")
 def health_check():
-    """Lightweight health check endpoint for Render free tier liveness probes."""
+    """Lightweight health check endpoint for Render liveness probes."""
     return {"status": "ok"}
-
