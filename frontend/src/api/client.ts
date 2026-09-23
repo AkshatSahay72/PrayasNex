@@ -101,5 +101,71 @@ export const apiClient = {
     });
     if (!res.ok) throw new Error(`Failed to validate question: ${res.statusText}`);
     return res.json();
+  },
+
+  // Dynamic Curriculum Authoring
+  async createSubject(payload: { name: string; description?: string; icon?: string }): Promise<SubjectDetail> {
+    const res = await fetch(`${API_BASE}/subjects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to create subject: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async createTopic(subjectId: string, payload: { name: string; description?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/subjects/${encodeURIComponent(subjectId)}/topics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to create topic: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async createConcept(topicId: string, payload: {
+    name: string;
+    description?: string;
+    prerequisite_concept_id?: string;
+    initial_note_markdown?: string;
+  }): Promise<ConceptSummary> {
+    const res = await fetch(`${API_BASE}/subjects/topics/${encodeURIComponent(topicId)}/concepts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to create concept: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async createQuestion(payload: {
+    concept_id: string;
+    question_text: string;
+    options: { id: string; text: string }[];
+    correct_option: string;
+    explanation: string;
+    difficulty?: string;
+  }): Promise<QuestionDetail> {
+    const res = await fetch(`${API_BASE}/assessments/questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to create question: ${res.statusText}`);
+    }
+    return res.json();
   }
 };
+

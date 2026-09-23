@@ -185,3 +185,33 @@ class AIQuestionValidationResult(BaseModel):
     is_valid: bool
     errors: List[str] = []
     validated_question: Optional[QuestionDetail] = None
+
+
+# --- Dynamic Curriculum Authoring Schemas ---
+
+class CreateSubjectRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=128)
+    description: Optional[str] = None
+    icon: Optional[str] = "BookOpen"
+
+
+class CreateTopicRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=128)
+    description: Optional[str] = None
+
+
+class CreateConceptRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=128)
+    description: Optional[str] = None
+    prerequisite_concept_id: Optional[str] = None
+    initial_note_markdown: Optional[str] = None
+
+
+class CreateQuestionRequest(BaseModel):
+    concept_id: str
+    question_text: str = Field(..., min_length=10)
+    options: List[OptionItem]
+    correct_option: str
+    explanation: str = Field(..., min_length=10)
+    difficulty: Optional[str] = "medium"
+

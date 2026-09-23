@@ -99,3 +99,58 @@ def validate_custom_question(question_payload: dict):
         is_valid=is_valid,
         errors=errors
     )
+
+
+from backend.app.schemas.api_models import CreateQuestionRequest
+import uuid
+from datetime import datetime, timezone
+
+
+@router.post("/questions", response_model=QuestionDetail)
+def create_question(req: CreateQuestionRequest, db: Session = Depends(get_db)):
+    """Creates a validated question for a concept."""
+    concept = db.query(Concept).filter(Concept.id == req.concept_id).first()
+    if not concept:
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    payload_dict = {
+        "question": req.question_text,
+        "options": [{"id": o.id, "text": o.text} for o in req.options],
+        "correct_option": req.correct_option,
+        "explanation": req.explanation,
+        "concept_id": req.concept_id,
+        "difficulty": req.difficulty or "medium"
+    }
+
+    is_valid, errors = QuestionValidator.validate(payload_dict, expected_concept_id=req.concept_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Validation failed: {', '.join(errors)}")
+
+    new_q = Question(
+        id=f"q-{uuid.uuid4().hex[:10]}",
+        concept_id=req.concept_id,
+        question_text=req.question_text.strip(),
+        options=[{"id": o.id, "text": o.text} for o in req.options],
+        correct_option=req.correct_option.strip().upper(),
+        explanation=req.explanation.strip(),
+        difficulty=req.difficulty or "medium",
+        is_ai_generated=False,
+        is_validated=True,
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(new_q)
+    db.commit()
+    db.refresh(new_q)
+
+    return QuestionDetail(
+        id=new_q.id,
+        concept_id=new_q.concept_id,
+        question_text=new_q.question_text,
+        options=req.options,
+        correct_option=new_q.correct_option,
+        explanation=new_q.explanation,
+        difficulty=new_q.difficulty,
+        is_ai_generated=False,
+        is_validated=True
+    )
+
