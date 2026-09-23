@@ -154,3 +154,214 @@ def create_question(req: CreateQuestionRequest, db: Session = Depends(get_db)):
         is_validated=True
     )
 
+
+from backend.app.schemas.api_models import (
+    SubmitDiagnosticRequest,
+    DiagnosticResult,
+    DiagnosticConceptBreakdown,
+    SecureQuestionResponse,
+    OptionItem
+)
+from backend.app.models.schema import Subject, Attempt, StudentConceptProgress
+
+
+@router.get("/diagnostic", response_model=List[SecureQuestionResponse])
+def get_subject_diagnostic_questions(
+    subject_id: str = Query(..., description="Target Subject ID for diagnostic baseline test"),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetches a representative diagnostic baseline assessment spanning all concepts
+    under a subject (1-2 questions per concept).
+    """
+    subj = db.query(Subject).filter(Subject.id == subject_id).first()
+    if not subj:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    diagnostic_questions = []
+    for topic in subj.topics:
+        for concept in topic.concepts:
+            # Grab up to 2 questions for this concept
+            qs = (
+                db.query(Question)
+                .filter(Question.concept_id == concept.id)
+                .order_by(Question.created_at.asc())
+                .limit(2)
+                .all()
+            )
+            for q in qs:
+                diagnostic_questions.append(
+                    SecureQuestionResponse(
+                        id=q.id,
+                        concept_id=q.concept_id,
+                        concept_name=f"{concept.name} ({topic.name})",
+                        question_text=q.question_text,
+                        options=[OptionItem(id=opt["id"], text=opt["text"]) for opt in q.options],
+                        difficulty=q.difficulty
+                    )
+                )
+
+    if not diagnostic_questions:
+        raise HTTPException(status_code=400, detail="No questions available for this subject's concepts yet.")
+
+    return diagnostic_questions
+
+
+
+@router.post("/submit-diagnostic", response_model=DiagnosticResult)
+def submit_diagnostic_test(
+    req: SubmitDiagnosticRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Evaluates a full subject diagnostic test, evaluates prior knowledge per concept,
+    updates each concept's StudentConceptProgress, and diagnoses weak vs strong areas.
+    """
+    subj = db.query(Subject).filter(Subject.id == req.subject_id).first()
+    if not subj:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    # Map answers by question_id
+    answers_map = {a.question_id: a for a in req.answers}
+    question_ids = list(answers_map.keys())
+
+    db_questions = db.query(Question).filter(Question.id.in_(question_ids)).all()
+    db_questions_by_id = {q.id: q for q in db_questions}
+
+    # Group results by concept_id
+    concept_evals = {}
+    total_correct = 0
+    now = datetime.now(timezone.utc)
+
+    for a in req.answers:
+        q = db_questions_by_id.get(a.question_id)
+        if not q:
+            continue
+
+        is_correct = (a.selected_option.strip().upper() == q.correct_option.strip().upper())
+        if is_correct:
+            total_correct += 1
+
+        cid = q.concept_id
+        if cid not in concept_evals:
+            concept_evals[cid] = {"total": 0, "correct": 0}
+        concept_evals[cid]["total"] += 1
+        if is_correct:
+            concept_evals[cid]["correct"] += 1
+
+        # Record attempt
+        attempt = Attempt(
+            id=f"att-{uuid.uuid4().hex[:10]}",
+            student_id=req.student_id,
+            question_id=q.id,
+            concept_id=q.concept_id,
+            selected_option=a.selected_option.strip().upper(),
+            is_correct=is_correct,
+            created_at=now
+        )
+        db.add(attempt)
+
+    # Process each concept's mastery and update DB
+    breakdowns = []
+    weak_count = 0
+    strong_count = 0
+    recommended_start_cid = None
+    recommended_start_name = None
+
+    for topic in subj.topics:
+        for concept in topic.concepts:
+            eval_data = concept_evals.get(concept.id, {"total": 0, "correct": 0})
+            c_total = eval_data["total"]
+            c_correct = eval_data["correct"]
+
+            if c_total > 0:
+                pct = round((c_correct / c_total) * 100.0, 1)
+            else:
+                pct = 0.0
+
+            if pct < 50.0:
+                status = "weak"
+                weak_count += 1
+                rec_msg = f"Prior knowledge gap detected in {concept.name}. Review study note before progressing."
+                if not recommended_start_cid:
+                    recommended_start_cid = concept.id
+                    recommended_start_name = concept.name
+            elif pct < 80.0:
+                status = "needs_practice"
+                rec_msg = f"Partial familiarity with {concept.name}. Additional practice recommended."
+                if not recommended_start_cid:
+                    recommended_start_cid = concept.id
+                    recommended_start_name = concept.name
+            else:
+                status = "strong"
+                strong_count += 1
+                rec_msg = f"Mastered baseline for {concept.name}. Ready for advanced applications."
+
+            # Update or create StudentConceptProgress
+            progress = (
+                db.query(StudentConceptProgress)
+                .filter(
+                    StudentConceptProgress.student_id == req.student_id,
+                    StudentConceptProgress.concept_id == concept.id
+                )
+                .first()
+            )
+            if not progress:
+                progress = StudentConceptProgress(
+                    id=f"prog-{req.student_id}-{concept.id}",
+                    student_id=req.student_id,
+                    concept_id=concept.id,
+                    attempts_count=c_total,
+                    correct_count=c_correct,
+                    mastery_score=pct,
+                    status=status,
+                    last_updated=now
+                )
+                db.add(progress)
+            else:
+                progress.attempts_count = (progress.attempts_count or 0) + c_total
+                progress.correct_count = (progress.correct_count or 0) + c_correct
+                progress.mastery_score = pct
+                progress.status = status
+                progress.last_updated = now
+
+            breakdowns.append(
+                DiagnosticConceptBreakdown(
+                    concept_id=concept.id,
+                    concept_name=concept.name,
+                    topic_name=topic.name,
+                    total_questions=c_total,
+                    correct_count=c_correct,
+                    score_percentage=pct,
+                    status=status,
+                    recommendation=rec_msg
+                )
+            )
+
+    db.commit()
+
+
+    total_q_count = len(req.answers)
+    overall_pct = round((total_correct / max(total_q_count, 1)) * 100.0, 1)
+
+    summary = (
+        f"Diagnostic Baseline: {overall_pct}% overall. "
+        f"{weak_count} concepts require foundational review, and {strong_count} concepts demonstrate strong prior familiarity."
+    )
+
+    return DiagnosticResult(
+        subject_id=subj.id,
+        subject_name=subj.name,
+        student_id=req.student_id,
+        total_questions=total_q_count,
+        total_correct=total_correct,
+        overall_score=overall_pct,
+        weak_concept_count=weak_count,
+        strong_concept_count=strong_count,
+        concept_breakdown=breakdowns,
+        recommended_start_concept_id=recommended_start_cid,
+        recommended_start_concept_name=recommended_start_name,
+        summary_message=summary
+    )
+
+

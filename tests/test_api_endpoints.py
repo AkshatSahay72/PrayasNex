@@ -95,3 +95,79 @@ def test_get_student_dashboard():
     dash = response.json()
     assert dash["student_name"] == "Alex Rivera"
     assert len(dash["all_progress"]) == 3
+
+
+def test_ai_curriculum_generation_and_diagnostic():
+    # 1. Generate full curriculum with AI
+    curriculum_payload = {
+        "subject_name": "Operating Systems",
+        "description": "Process management, memory virtualization, and file systems",
+        "num_topics": 2,
+        "concepts_per_topic": 2
+    }
+    resp = client.post("/api/subjects/ai-generate", json=curriculum_payload)
+    assert resp.status_code == 200
+    subject_data = resp.json()
+    assert "Operating Systems" in subject_data["name"]
+    assert len(subject_data["topics"]) >= 1
+
+    subject_id = subject_data["id"]
+
+    # 2. Fetch diagnostic baseline questions for this new subject
+    diag_resp = client.get(f"/api/assessments/diagnostic?subject_id={subject_id}")
+    assert diag_resp.status_code == 200
+    diag_questions = diag_resp.json()
+    assert len(diag_questions) >= 1
+
+    # 3. Submit diagnostic test answers
+    diag_answers = [
+        {
+            "question_id": q["id"],
+            "concept_id": q["concept_id"],
+            "selected_option": "A"
+        }
+        for q in diag_questions
+    ]
+    sub_resp = client.post(
+        "/api/assessments/submit-diagnostic",
+        json={
+            "student_id": "demo-student-1",
+            "subject_id": subject_id,
+            "answers": diag_answers
+        }
+    )
+    assert sub_resp.status_code == 200
+    diag_result = sub_resp.json()
+    assert diag_result["subject_id"] == subject_id
+    assert "overall_score" in diag_result
+    assert len(diag_result["concept_breakdown"]) >= 1
+
+
+def test_ai_generate_concept_and_note():
+    # Fetch first topic
+    subjects_resp = client.get("/api/subjects")
+    topics = subjects_resp.json()[0]["topics"]
+    target_topic_id = topics[0]["id"]
+
+    # Generate concept under topic
+    concept_resp = client.post(
+        f"/api/subjects/topics/{target_topic_id}/ai-generate-concept",
+        json={"concept_hint": "Momentum Optimizer"}
+    )
+    assert concept_resp.status_code == 200
+    concept_data = concept_resp.json()
+    assert "Momentum" in concept_data["name"]
+
+    # Generate custom AI study note
+    note_resp = client.post(
+        "/api/notes/generate",
+        json={
+            "concept_id": concept_data["id"],
+            "student_id": "demo-student-1",
+            "focus_areas": ["Physics-based momentum analogies"]
+        }
+    )
+    assert note_resp.status_code == 200
+    note_data = note_resp.json()
+    assert len(note_data["markdown_content"]) > 50
+

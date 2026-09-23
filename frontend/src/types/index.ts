@@ -127,3 +127,30 @@ export interface AIValidationResult {
   is_valid: boolean;
   errors: string[];
 }
+
+export interface DiagnosticConceptBreakdown {
+  concept_id: string;
+  concept_name: string;
+  topic_name?: string;
+  total_questions: number;
+  correct_count: number;
+  score_percentage: number;
+  status: 'weak' | 'needs_practice' | 'strong';
+  recommendation: string;
+}
+
+export interface DiagnosticResult {
+  subject_id: string;
+  subject_name: string;
+  student_id: string;
+  total_questions: number;
+  total_correct: number;
+  overall_score: number;
+  weak_concept_count: number;
+  strong_concept_count: number;
+  concept_breakdown: DiagnosticConceptBreakdown[];
+  recommended_start_concept_id?: string;
+  recommended_start_concept_name?: string;
+  summary_message: string;
+}
+

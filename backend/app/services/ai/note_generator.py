@@ -25,34 +25,46 @@ class NoteGenerator:
         Falls back cleanly to pre-structured notes if Groq is unavailable.
         """
         system_prompt = (
-            "You are a dedicated machine learning instructor. "
-            "Write a concise, structured, encouraging study guide in clean GitHub-Flavored Markdown. "
-            "Explain core mathematical intuition, equations, common pitfalls, and practical mental models."
+            "You are a world-class university professor and curriculum author. "
+            "Write an in-depth, structured, pedagogical study guide in clean GitHub-Flavored Markdown. "
+            "Explain core intuition, mental models, concrete examples, formulas/diagrams (if applicable), common pitfalls, and self-check questions."
         )
 
-        focus_text = f"The student struggled with: {', '.join(weak_areas)}." if weak_areas else "Focus on core intuition and step-by-step calculus."
+        focus_text = f"The student struggled with: {', '.join(weak_areas)}." if weak_areas else "Provide a comprehensive, crystal-clear conceptual foundation."
 
         user_prompt = f"""
-Write an educational learning note for:
-- Concept: {concept_name} (ID: {concept_id})
+Write an academic study guide for:
+- Concept Name: {concept_name} (ID: {concept_id})
 - Student Name: {student_name}
-- Context: {focus_text}
+- Context/Weakness: {focus_text}
 
-Include:
-1. # {concept_name}
-2. Core Definition & Geometric Intuition
-3. Mathematical Update Rule (LaTeX format)
-4. Common Mistakes & Pitfalls
-5. Practical Takeaway Summary
+Structure the Markdown with:
+# {concept_name}
 
-Format strictly as Markdown without extra conversational filler.
+## 1. Executive Summary & Intuitive Mental Model
+(Explain what this concept is in plain English with a vivid real-world analogy.)
+
+## 2. Core Mechanics & Technical Architecture
+(Detailed breakdown of operational steps, rules, algorithms, or formulas.)
+
+## 3. Concrete Example / Walkthrough
+(A step-by-step example illustrating how this works in practice.)
+
+## 4. Common Misconceptions & Traps
+(List specific mistakes learners frequently make and why they occur.)
+
+## 5. Summary & Self-Check Review
+(Key takeaways to remember before taking an assessment.)
+
+Format strictly in clean Markdown without chatbot pleasantries or conversational filler.
 """
 
         raw_content = GroqService.generate_chat_completion(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=0.3,
-            json_mode=False
+            json_mode=False,
+            timeout_seconds=20.0
         )
 
         if raw_content and len(raw_content.strip()) > 80:
@@ -60,7 +72,7 @@ Format strictly as Markdown without extra conversational filler.
                 id=f"groq-note-{uuid.uuid4().hex[:8]}",
                 concept_id=concept_id,
                 concept_name=concept_name,
-                title=f"Personalized Guide: {concept_name}",
+                title=f"Study Guide: {concept_name}",
                 markdown_content=raw_content.strip(),
                 is_ai_generated=True
             )
@@ -69,32 +81,39 @@ Format strictly as Markdown without extra conversational filler.
         focus_points = (
             "\n".join([f"- **Focus Area**: {w}" for w in weak_areas])
             if weak_areas
-            else "- **Focus Area**: Step-by-step intuition and gradient update mechanics."
+            else f"- **Core Pillar**: Foundational theory and practical application of {concept_name}."
         )
 
-        fallback_md = f"""# Personalized Review: {concept_name}
+        fallback_md = f"""# {concept_name}
 
-Hello **{student_name}**, here is a targeted review note to reinforce your understanding of **{concept_name}**.
+Hello **{student_name}**, here is a structured study guide to master **{concept_name}**.
 
-## Key Concepts
+## 1. Executive Summary & Intuition
+**{concept_name}** provides the underlying rules and invariants necessary for deterministic and reliable operation. Think of it as a contract: inputs must adhere to strict preconditions so outputs remain valid and predictable.
+
+## 2. Key Pillars
 {focus_points}
 
-### Mathematical Intuition
-1. **Direction**: Check the gradient vector $\\nabla L(\\mathbf{{w}})$ to find the slope.
-2. **Step Size**: Scale the update with the learning rate $\\alpha$.
-3. **Descent**: Move opposite to the gradient: $\\mathbf{{w}}_{{t+1}} = \\mathbf{{w}}_t - \\alpha \\nabla L(\\mathbf{{w}}_t)$.
+### Core Operational Mechanics
+1. **Initialization**: Establish baseline state and invariant boundaries.
+2. **Execution & Transition**: Process incoming events through verified state machines.
+3. **Verification**: Confirm state integrity against target constraints.
 
-### Common Mistakes to Avoid
-- **Overshooting**: Setting $\\alpha$ too large causes erratic oscillations or loss divergence.
-- **Plateaus**: Setting $\\alpha$ too small requires impractical training iterations.
-- **Ill-Conditioning**: Failing to scale features causes gradient zig-zagging in elongated ravines.
+## 3. Common Pitfalls & Mistakes
+- **Neglecting Edge Cases**: Overlooking boundary limits or empty input states.
+- **Unchecked Assumptions**: Relying on unspoken invariants rather than explicit checks.
+- **Premature Optimization**: Sacrificing correctness for unmeasured throughput gains.
+
+## 4. Key Takeaways
+Take the concept assessment to verify your mastery.
 """
 
         return NoteResponse(
             id=f"fb-note-{uuid.uuid4().hex[:8]}",
             concept_id=concept_id,
             concept_name=concept_name,
-            title=f"Adaptive Note: {concept_name}",
+            title=f"Study Guide: {concept_name}",
             markdown_content=fallback_md,
             is_ai_generated=False
         )
+

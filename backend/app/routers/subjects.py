@@ -314,3 +314,50 @@ Take the concept assessment to verify your understanding.
         student_mastery=0.0
     )
 
+
+from backend.app.schemas.api_models import GenerateCurriculumRequest, GenerateConceptRequest
+from backend.app.services.ai_service import AIService
+
+
+@router.post("/ai-generate", response_model=SubjectDetail)
+def generate_curriculum_with_ai(
+    req: GenerateCurriculumRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Asks Groq LLM to automatically design and structure an entire subject curriculum
+    (Topics, progressive Concepts, Markdown Study Guides, and ExamBuddy validated MCQs).
+    """
+    try:
+        return AIService.generate_curriculum(
+            db=db,
+            subject_name=req.subject_name,
+            description=req.description,
+            num_topics=req.num_topics or 3,
+            concepts_per_topic=req.concepts_per_topic or 2
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate curriculum with AI: {str(e)}")
+
+
+@router.post("/topics/{topic_id}/ai-generate-concept", response_model=ConceptSummary)
+def generate_concept_with_ai(
+    topic_id: str,
+    req: GenerateConceptRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Asks Groq LLM to design a single concept under a topic with its study guide and MCQs.
+    """
+    try:
+        return AIService.generate_concept(
+            db=db,
+            topic_id=topic_id,
+            concept_name_hint=req.concept_hint
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate concept with AI: {str(e)}")
+
+

@@ -166,6 +166,85 @@ export const apiClient = {
       throw new Error(err.detail || `Failed to create question: ${res.statusText}`);
     }
     return res.json();
+  },
+
+  // AI Curriculum & Concept Generation (Groq)
+  async generateCurriculum(payload: {
+    subject_name: string;
+    description?: string;
+    num_topics?: number;
+    concepts_per_topic?: number;
+  }): Promise<SubjectDetail> {
+    const res = await fetch(`${API_BASE}/subjects/ai-generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to generate curriculum: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async generateConceptWithAI(topicId: string, payload: {
+    concept_hint: string;
+  }): Promise<ConceptSummary> {
+    const res = await fetch(`${API_BASE}/subjects/topics/${encodeURIComponent(topicId)}/ai-generate-concept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to generate concept: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async generateNoteWithAI(payload: {
+    concept_id: string;
+    student_id?: string;
+    focus_areas?: string[];
+  }): Promise<NoteResponse> {
+    const res = await fetch(`${API_BASE}/notes/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to generate note: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Baseline Diagnostic Assessment
+  async getDiagnosticQuestions(subjectId: string): Promise<SecureQuestion[]> {
+    const res = await fetch(`${API_BASE}/assessments/diagnostic?subject_id=${encodeURIComponent(subjectId)}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to fetch diagnostic questions: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async submitDiagnostic(payload: {
+    student_id: string;
+    subject_id: string;
+    answers: { question_id: string; concept_id: string; selected_option: string }[];
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/assessments/submit-diagnostic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Failed to submit diagnostic assessment: ${res.statusText}`);
+    }
+    return res.json();
   }
 };
+
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
-import type { SubjectDetail } from '../types';
+import type { SubjectDetail, SecureQuestion, DiagnosticResult } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 
 interface LearnPageProps {
@@ -8,7 +8,7 @@ interface LearnPageProps {
   onStartTest: (conceptId: string) => void;
 }
 
-type ModalType = 'subject' | 'topic' | 'concept' | 'question' | null;
+type ModalType = 'subject' | 'topic' | 'concept' | 'question' | 'ai_curriculum' | 'ai_concept' | null;
 
 export const LearnPage: React.FC<LearnPageProps> = ({
   onSelectConcept,
@@ -29,7 +29,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
   const [selectedTopicId, setSelectedTopicId] = useState<string>('');
   const [selectedConceptId, setSelectedConceptId] = useState<string>('');
 
-  // Form Fields
+  // Form Fields - Manual
   const [subjectName, setSubjectName] = useState('');
   const [subjectDescription, setSubjectDescription] = useState('');
 
@@ -49,6 +49,22 @@ export const LearnPage: React.FC<LearnPageProps> = ({
   const [qCorrect, setQCorrect] = useState<'A' | 'B' | 'C' | 'D'>('A');
   const [qExplanation, setQExplanation] = useState('');
   const [qDifficulty, setQDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+
+  // Form Fields - AI Generation
+  const [aiSubjectName, setAiSubjectName] = useState('');
+  const [aiSubjectDesc, setAiSubjectDesc] = useState('');
+  const [aiTopicCount, setAiTopicCount] = useState<number>(3);
+  const [aiConceptCount, setAiConceptCount] = useState<number>(2);
+  const [aiConceptHint, setAiConceptHint] = useState('');
+
+  // Diagnostic Test States
+  const [activeDiagnosticSubject, setActiveDiagnosticSubject] = useState<{ id: string; name: string } | null>(null);
+  const [diagnosticQuestions, setDiagnosticQuestions] = useState<SecureQuestion[]>([]);
+  const [diagnosticAnswers, setDiagnosticAnswers] = useState<Record<string, string>>({});
+  const [diagnosticCurrentIndex, setDiagnosticCurrentIndex] = useState<number>(0);
+  const [diagnosticLoading, setDiagnosticLoading] = useState<boolean>(false);
+  const [diagnosticSubmitting, setDiagnosticSubmitting] = useState<boolean>(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
 
   const fetchSubjects = async () => {
     try {
@@ -95,8 +111,12 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     setQCorrect('A');
     setQExplanation('');
     setQDifficulty('medium');
+    setAiSubjectName('');
+    setAiSubjectDesc('');
+    setAiConceptHint('');
   };
 
+  // 1. Manual Create Subject
   const handleCreateSubject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subjectName.trim()) return;
@@ -107,7 +127,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         name: subjectName.trim(),
         description: subjectDescription.trim() || undefined,
       });
-      setActionSuccess(`Subject "${subjectName.trim()}" created successfully.`);
+      setActionSuccess(`Subject "${subjectName.trim()}" created.`);
       resetForms();
       await fetchSubjects();
     } catch (err: any) {
@@ -117,6 +137,52 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     }
   };
 
+  // 2. AI Generate Entire Subject Curriculum (Groq)
+  const handleAIGenerateCurriculum = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiSubjectName.trim()) return;
+    try {
+      setModalSubmitting(true);
+      setModalError(null);
+      const generated = await apiClient.generateCurriculum({
+        subject_name: aiSubjectName.trim(),
+        description: aiSubjectDesc.trim() || undefined,
+        num_topics: Number(aiTopicCount) || 3,
+        concepts_per_topic: Number(aiConceptCount) || 2,
+      });
+      setActionSuccess(`Generated full curriculum for "${generated.name}" with study guides and MCQs.`);
+      resetForms();
+      await fetchSubjects();
+      // Prompt user to take baseline diagnostic test on newly generated subject
+      startDiagnosticTest(generated.id, generated.name);
+    } catch (err: any) {
+      setModalError(err.message || 'Failed to generate curriculum with AI');
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  // 3. AI Generate Single Concept
+  const handleAIGenerateConcept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTopicId || !aiConceptHint.trim()) return;
+    try {
+      setModalSubmitting(true);
+      setModalError(null);
+      const concept = await apiClient.generateConceptWithAI(selectedTopicId, {
+        concept_hint: aiConceptHint.trim(),
+      });
+      setActionSuccess(`Concept "${concept.name}" generated with note and questions.`);
+      resetForms();
+      await fetchSubjects();
+    } catch (err: any) {
+      setModalError(err.message || 'Failed to generate concept with AI');
+    } finally {
+      setModalSubmitting(false);
+    }
+  };
+
+  // 4. Manual Create Topic
   const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSubjectId || !topicName.trim()) return;
@@ -137,6 +203,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     }
   };
 
+  // 5. Manual Create Concept
   const handleCreateConcept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTopicId || !conceptName.trim()) return;
@@ -149,7 +216,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         prerequisite_concept_id: conceptPrereqId || undefined,
         initial_note_markdown: conceptNote.trim() || undefined,
       });
-      setActionSuccess(`Concept "${conceptName.trim()}" created with study note.`);
+      setActionSuccess(`Concept "${conceptName.trim()}" created.`);
       resetForms();
       await fetchSubjects();
     } catch (err: any) {
@@ -159,6 +226,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     }
   };
 
+  // 6. Manual Create Question
   const handleCreateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedConceptId || !qText.trim() || !qExplanation.trim()) return;
@@ -192,6 +260,54 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     }
   };
 
+  // --- Diagnostic Assessment Flow ---
+  const startDiagnosticTest = async (subjectId: string, subjectName: string) => {
+    try {
+      setDiagnosticLoading(true);
+      setDiagnosticResult(null);
+      setActiveDiagnosticSubject({ id: subjectId, name: subjectName });
+      setDiagnosticAnswers({});
+      setDiagnosticCurrentIndex(0);
+
+      const qs = await apiClient.getDiagnosticQuestions(subjectId);
+      setDiagnosticQuestions(qs);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load diagnostic assessment for this subject.');
+      setActiveDiagnosticSubject(null);
+    } finally {
+      setDiagnosticLoading(false);
+    }
+  };
+
+  const handleSelectDiagnosticOption = (questionId: string, optionId: string) => {
+    setDiagnosticAnswers((prev) => ({ ...prev, [questionId]: optionId }));
+  };
+
+  const handleSubmitDiagnostic = async () => {
+    if (!activeDiagnosticSubject) return;
+    try {
+      setDiagnosticSubmitting(true);
+      const answersPayload = diagnosticQuestions.map((q) => ({
+        question_id: q.id,
+        concept_id: q.concept_id,
+        selected_option: diagnosticAnswers[q.id] || 'A',
+      }));
+
+      const res = await apiClient.submitDiagnostic({
+        student_id: 'demo-student-1',
+        subject_id: activeDiagnosticSubject.id,
+        answers: answersPayload,
+      });
+
+      setDiagnosticResult(res);
+      await fetchSubjects();
+    } catch (err: any) {
+      alert(err.message || 'Failed to submit diagnostic assessment');
+    } finally {
+      setDiagnosticSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-8 max-w-4xl text-sm text-[#738096]">
@@ -217,24 +333,37 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
   return (
     <div className="p-6 md:p-10 max-w-4xl space-y-10">
-      {/* Header with Title & Action */}
+      {/* Header with Title & Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">Curriculum & Concepts</h1>
           <p className="text-xs text-[#7f8ba0] mt-1">
-            Structured knowledge graph with prerequisite dependencies and adaptive practice.
+            Structured knowledge graph with prerequisite dependencies and diagnostic baseline assessment.
           </p>
         </div>
-        <button
-          onClick={() => {
-            resetForms();
-            setActiveModal('subject');
-          }}
-          className="px-3.5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-        >
-          <span className="text-sm font-bold">+</span>
-          <span>New Subject</span>
-        </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              resetForms();
+              setActiveModal('ai_curriculum');
+            }}
+            className="px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-md transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+          >
+            <span>✨</span>
+            <span>AI Generate Subject (Groq)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              resetForms();
+              setActiveModal('subject');
+            }}
+            className="px-3 py-2 text-xs font-medium bg-[#1c222e] hover:bg-[#262f40] text-[#a4b2c7] border border-[#2b3548] rounded-md transition-colors shrink-0"
+          >
+            + Manual Subject
+          </button>
+        </div>
       </div>
 
       {/* Action Notification */}
@@ -252,41 +381,64 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* Subjects List */}
       {subjects.length === 0 ? (
-        <div className="p-8 border border-dashed border-[#242c3d] rounded-lg text-center space-y-3 bg-[#11151e]">
+        <div className="p-8 border border-dashed border-[#242c3d] rounded-lg text-center space-y-4 bg-[#11151e]">
           <p className="text-sm text-[#8c98ad]">No subjects configured in the curriculum yet.</p>
-          <button
-            onClick={() => {
-              resetForms();
-              setActiveModal('subject');
-            }}
-            className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded"
-          >
-            Create Your First Subject
-          </button>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => {
+                resetForms();
+                setActiveModal('ai_curriculum');
+              }}
+              className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded"
+            >
+              ✨ Generate Entire Subject with Groq AI
+            </button>
+            <button
+              onClick={() => {
+                resetForms();
+                setActiveModal('subject');
+              }}
+              className="px-3 py-2 text-xs font-medium bg-[#191f2c] text-[#8c98ad] hover:text-white border border-[#263145] rounded"
+            >
+              + Create Manually
+            </button>
+          </div>
         </div>
       ) : (
         subjects.map((subject) => (
           <div key={subject.id} className="space-y-6 bg-[#0f131a] p-5 rounded-lg border border-[#1b212d]">
-            {/* Subject Header with Add Topic button */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#1f2533]">
+            {/* Subject Header with Diagnostic Test & Add Topic button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#1f2533] gap-3">
               <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                  {subject.name}
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>{subject.name}</span>
                 </h2>
                 {subject.description && (
                   <p className="text-xs text-[#738096] mt-0.5">{subject.description}</p>
                 )}
               </div>
-              <button
-                onClick={() => {
-                  resetForms();
-                  setSelectedSubjectId(subject.id);
-                  setActiveModal('topic');
-                }}
-                className="px-2.5 py-1 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#a4b1c7] border border-[#263145] rounded transition-colors flex items-center gap-1"
-              >
-                <span>+</span> Add Topic
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                <button
+                  onClick={() => startDiagnosticTest(subject.id, subject.name)}
+                  className="px-3 py-1.5 text-xs font-medium bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border border-amber-700/60 rounded transition-colors flex items-center gap-1.5 shadow-xs"
+                  title="Take baseline test to evaluate prior knowledge across all concepts"
+                >
+                  <span>⚡</span>
+                  <span>Take Baseline Diagnostic Test</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    resetForms();
+                    setSelectedSubjectId(subject.id);
+                    setActiveModal('topic');
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#a4b1c7] border border-[#263145] rounded transition-colors flex items-center gap-1"
+                >
+                  <span>+</span> Add Topic
+                </button>
+              </div>
             </div>
 
             {/* Topics */}
@@ -297,22 +449,36 @@ export const LearnPage: React.FC<LearnPageProps> = ({
             ) : (
               subject.topics.map((topic) => (
                 <div key={topic.id} className="space-y-3 pl-1 sm:pl-3">
-                  {/* Topic Title with Add Concept button */}
+                  {/* Topic Title with AI and Manual Add Concept buttons */}
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-semibold text-[#8e9bb0] uppercase tracking-wider">
                       Topic: {topic.name}
                     </h3>
-                    <button
-                      onClick={() => {
-                        resetForms();
-                        setSelectedTopicId(topic.id);
-                        setConceptNote(`# ${topic.name}: New Concept\n\n## Overview\nCore pedagogical notes.\n\n## Key Mechanics\nFoundational rules and properties.\n\n## Practice\nTake assessment to confirm mastery.`);
-                        setActiveModal('concept');
-                      }}
-                      className="px-2 py-0.5 text-[11px] font-medium bg-[#141923] hover:bg-[#1f2636] text-[#8695ad] border border-[#222938] rounded transition-colors"
-                    >
-                      + Add Concept
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          resetForms();
+                          setSelectedTopicId(topic.id);
+                          setActiveModal('ai_concept');
+                        }}
+                        className="px-2 py-0.5 text-[11px] font-medium bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-800/60 rounded transition-colors flex items-center gap-1"
+                      >
+                        <span>✨</span> AI Concept
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          resetForms();
+                          setSelectedTopicId(topic.id);
+                          setConceptNote(`# ${topic.name}: New Concept\n\n## Overview\nCore pedagogical notes.\n\n## Key Mechanics\nFoundational rules and properties.\n\n## Practice\nTake assessment to confirm mastery.`);
+                          setActiveModal('concept');
+                        }}
+                        className="px-2 py-0.5 text-[11px] font-medium bg-[#141923] hover:bg-[#1f2636] text-[#8695ad] border border-[#222938] rounded transition-colors"
+                      >
+                        + Manual Concept
+                      </button>
+                    </div>
                   </div>
 
                   {/* Concepts Container */}
@@ -398,9 +564,394 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         ))
       )}
 
+      {/* --- DIAGNOSTIC ASSESSMENT MODAL / FULL VIEW --- */}
+      {activeDiagnosticSubject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-[#11151e] border border-[#263145] rounded-lg max-w-2xl w-full p-6 space-y-6 shadow-2xl my-8">
+            {diagnosticLoading ? (
+              <div className="py-12 text-center text-sm text-[#8c98ad]">
+                Loading diagnostic assessment for {activeDiagnosticSubject.name}...
+              </div>
+            ) : diagnosticResult ? (
+              /* Diagnostic Result Report */
+              <div className="space-y-6">
+                <div className="border-b border-[#202738] pb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      Diagnostic Baseline Report: {diagnosticResult.subject_name}
+                    </h3>
+                    <p className="text-xs text-[#7f8ba0] mt-0.5">
+                      Prior knowledge evaluated across {diagnosticResult.concept_breakdown.length} concepts.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveDiagnosticSubject(null)}
+                    className="text-[#717d91] hover:text-white text-base"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Score Summary Box */}
+                <div className="grid grid-cols-3 gap-3 p-4 bg-[#0a0d13] border border-[#1e2535] rounded-lg text-center">
+                  <div>
+                    <div className="text-2xl font-bold text-white">{diagnosticResult.overall_score}%</div>
+                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Baseline Score</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-rose-400">{diagnosticResult.weak_concept_count}</div>
+                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Needs Immediate Care</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-emerald-400">{diagnosticResult.strong_concept_count}</div>
+                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Prior Knowledge Mastered</div>
+                  </div>
+                </div>
+
+                {/* Summary Alert */}
+                <div className="p-3 bg-[#161c28] border border-[#273247] rounded text-xs text-[#a9b7cc]">
+                  {diagnosticResult.summary_message}
+                </div>
+
+                {/* Concept Diagnostic Breakdown Table */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-[#8c98ad] uppercase tracking-wider">Concept Diagnostic Breakdown</h4>
+                  <div className="border border-[#222938] rounded-lg overflow-hidden divide-y divide-[#1e2432] bg-[#0c0f16]">
+                    {diagnosticResult.concept_breakdown.map((item) => (
+                      <div key={item.concept_id} className="p-3 flex items-center justify-between gap-4">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-white">{item.concept_name}</span>
+                            <StatusBadge status={item.status as any} />
+                          </div>
+                          <p className="text-[11px] text-[#758399]">{item.recommendation}</p>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-xs font-mono text-[#a3b1c6]">{item.score_percentage}%</span>
+                          <button
+                            onClick={() => {
+                              setActiveDiagnosticSubject(null);
+                              onSelectConcept(item.concept_id);
+                            }}
+                            className="px-2.5 py-1 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-blue-400 border border-[#263145] rounded transition-colors"
+                          >
+                            Study
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Footer Action */}
+                <div className="flex items-center justify-between pt-2 border-t border-[#1f2636]">
+                  <button
+                    onClick={() => setActiveDiagnosticSubject(null)}
+                    className="px-3.5 py-1.5 text-xs text-[#8c98ad] hover:text-white"
+                  >
+                    Back to Curriculum
+                  </button>
+
+                  {diagnosticResult.recommended_start_concept_id && (
+                    <button
+                      onClick={() => {
+                        const targetId = diagnosticResult.recommended_start_concept_id!;
+                        setActiveDiagnosticSubject(null);
+                        onSelectConcept(targetId);
+                      }}
+                      className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                    >
+                      🚀 Start Studying {diagnosticResult.recommended_start_concept_name} →
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : diagnosticQuestions.length > 0 ? (
+              /* Diagnostic Questions Wizard */
+              <div className="space-y-6">
+                <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
+                  <div>
+                    <h3 className="text-sm font-bold text-white">
+                      Baseline Diagnostic: {activeDiagnosticSubject.name}
+                    </h3>
+                    <p className="text-[11px] text-[#717e94]">
+                      Question {diagnosticCurrentIndex + 1} of {diagnosticQuestions.length} — Assessing prior knowledge
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveDiagnosticSubject(null)}
+                    className="text-[#717d91] hover:text-white text-base"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-[#181e2b] h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-full transition-all duration-300"
+                    style={{
+                      width: `${((diagnosticCurrentIndex + 1) / diagnosticQuestions.length) * 100}%`,
+                    }}
+                  />
+                </div>
+
+                {/* Active Question */}
+                {(() => {
+                  const currentQ = diagnosticQuestions[diagnosticCurrentIndex];
+                  return (
+                    <div className="space-y-4">
+                      <div className="text-xs font-mono text-amber-400/90">
+                        {currentQ.concept_name || 'Concept Assessment'}
+                      </div>
+
+                      <h4 className="text-sm font-semibold text-white leading-relaxed">
+                        {currentQ.question_text}
+                      </h4>
+
+                      <div className="space-y-2 pt-2">
+                        {currentQ.options.map((opt) => {
+                          const isSelected = diagnosticAnswers[currentQ.id] === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleSelectDiagnosticOption(currentQ.id, opt.id)}
+                              className={`w-full text-left p-3 rounded text-xs transition-colors flex items-start gap-3 border ${
+                                isSelected
+                                  ? 'bg-amber-950/40 border-amber-600 text-amber-100 font-medium'
+                                  : 'bg-[#0b0e14] border-[#202838] text-[#9eb0cc] hover:bg-[#151a24] hover:text-white'
+                              }`}
+                            >
+                              <span
+                                className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold shrink-0 ${
+                                  isSelected
+                                    ? 'bg-amber-500 text-black'
+                                    : 'bg-[#181f2c] text-[#738299]'
+                                }`}
+                              >
+                                {opt.id}
+                              </span>
+                              <span className="pt-0.5">{opt.text}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Diagnostic Wizard Navigation */}
+                <div className="flex items-center justify-between pt-4 border-t border-[#1f2636]">
+                  <button
+                    type="button"
+                    disabled={diagnosticCurrentIndex === 0}
+                    onClick={() => setDiagnosticCurrentIndex((i) => Math.max(0, i - 1))}
+                    className="px-3 py-1.5 text-xs text-[#8c98ad] hover:text-white disabled:opacity-30"
+                  >
+                    ← Previous
+                  </button>
+
+                  {diagnosticCurrentIndex < diagnosticQuestions.length - 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => setDiagnosticCurrentIndex((i) => i + 1)}
+                      className="px-4 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-black rounded transition-colors"
+                    >
+                      Next Question →
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={diagnosticSubmitting}
+                      onClick={handleSubmitDiagnostic}
+                      className="px-5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors disabled:opacity-50"
+                    >
+                      {diagnosticSubmitting ? 'Evaluating Baseline...' : 'Submit Diagnostic Assessment'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-[#8c98ad]">
+                No questions configured for this subject yet.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* --- MODALS --- */}
 
-      {/* 1. Create Subject Modal */}
+      {/* 1. AI Generate Curriculum Modal (Groq) */}
+      {activeModal === 'ai_curriculum' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <span>✨</span> AI Curriculum Generator (Groq)
+                </h3>
+                <p className="text-[11px] text-[#717d91]">
+                  Instantly drafts topics, concepts, study notes, and MCQs.
+                </p>
+              </div>
+              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+            </div>
+
+            {modalError && (
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+                {modalError}
+              </div>
+            )}
+
+            <form onSubmit={handleAIGenerateCurriculum} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Subject Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={aiSubjectName}
+                  onChange={(e) => setAiSubjectName(e.target.value)}
+                  placeholder="e.g. Operating Systems, Distributed Systems, Compiler Design"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Context / Syllabus Scope (optional)</label>
+                <textarea
+                  rows={2}
+                  value={aiSubjectDesc}
+                  onChange={(e) => setAiSubjectDesc(e.target.value)}
+                  placeholder="e.g. Focus on memory hierarchy, virtual memory, process scheduling, and concurrency."
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Number of Topics</label>
+                  <select
+                    value={aiTopicCount}
+                    onChange={(e) => setAiTopicCount(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={2}>2 Topics</option>
+                    <option value={3}>3 Topics</option>
+                    <option value={4}>4 Topics</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Concepts per Topic</label>
+                  <select
+                    value={aiConceptCount}
+                    onChange={(e) => setAiConceptCount(Number(e.target.value))}
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={2}>2 Concepts</option>
+                    <option value={3}>3 Concepts</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={resetForms}
+                  className="px-3 py-1.5 text-xs font-medium text-[#8c98ad] hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalSubmitting || !aiSubjectName.trim()}
+                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded transition-colors"
+                >
+                  {modalSubmitting ? 'Generating with Groq LLM...' : '✨ Generate Full Curriculum'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. AI Generate Concept Modal */}
+      {activeModal === 'ai_concept' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
+          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <span>✨</span> AI Concept Generator (Groq)
+                </h3>
+                <p className="text-[11px] text-[#717d91]">
+                  Generates concept definition, study note, and validated MCQs.
+                </p>
+              </div>
+              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+            </div>
+
+            {modalError && (
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+                {modalError}
+              </div>
+            )}
+
+            <form onSubmit={handleAIGenerateConcept} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Target Topic</label>
+                <select
+                  value={selectedTopicId}
+                  onChange={(e) => setSelectedTopicId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {subjects.map((s) =>
+                    s.topics.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {s.name} → {t.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Concept Name / Prompt *</label>
+                <input
+                  type="text"
+                  required
+                  value={aiConceptHint}
+                  onChange={(e) => setAiConceptHint(e.target.value)}
+                  placeholder="e.g. Page Replacement Algorithms, LRU Cache, Semaphore Mutex"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={resetForms}
+                  className="px-3 py-1.5 text-xs font-medium text-[#8c98ad] hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalSubmitting || !aiConceptHint.trim()}
+                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded transition-colors"
+                >
+                  {modalSubmitting ? 'Generating with Groq...' : '✨ Generate Concept & MCQs'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Manual Create Subject Modal */}
       {activeModal === 'subject' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
           <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
@@ -460,7 +1011,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         </div>
       )}
 
-      {/* 2. Create Topic Modal */}
+      {/* 4. Manual Create Topic Modal */}
       {activeModal === 'topic' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
           <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
@@ -533,7 +1084,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         </div>
       )}
 
-      {/* 3. Create Concept Modal */}
+      {/* 5. Manual Create Concept Modal */}
       {activeModal === 'concept' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
           <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-lg w-full p-6 space-y-4 shadow-xl my-8">
@@ -617,7 +1168,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         </div>
       )}
 
-      {/* 4. Create Question Modal */}
+      {/* 6. Manual Create Question Modal */}
       {activeModal === 'question' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
           <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-xl w-full p-6 space-y-4 shadow-xl my-8">
@@ -748,4 +1299,5 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     </div>
   );
 };
+
 

@@ -195,6 +195,17 @@ class CreateSubjectRequest(BaseModel):
     icon: Optional[str] = "BookOpen"
 
 
+class GenerateCurriculumRequest(BaseModel):
+    subject_name: str = Field(..., min_length=2, max_length=128)
+    description: Optional[str] = None
+    num_topics: Optional[int] = 3
+    concepts_per_topic: Optional[int] = 2
+
+
+class GenerateConceptRequest(BaseModel):
+    concept_hint: str = Field(..., min_length=2, max_length=128)
+
+
 class CreateTopicRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=128)
     description: Optional[str] = None
@@ -214,4 +225,45 @@ class CreateQuestionRequest(BaseModel):
     correct_option: str
     explanation: str = Field(..., min_length=10)
     difficulty: Optional[str] = "medium"
+
+
+# --- Baseline Diagnostic Assessment Schemas ---
+
+class DiagnosticAnswerItem(BaseModel):
+    question_id: str
+    concept_id: str
+    selected_option: str
+
+
+class SubmitDiagnosticRequest(BaseModel):
+    student_id: str = "demo-student-1"
+    subject_id: str
+    answers: List[DiagnosticAnswerItem]
+
+
+class DiagnosticConceptBreakdown(BaseModel):
+    concept_id: str
+    concept_name: str
+    topic_name: Optional[str] = None
+    total_questions: int
+    correct_count: int
+    score_percentage: float
+    status: str  # 'weak' | 'needs_practice' | 'strong'
+    recommendation: str
+
+
+class DiagnosticResult(BaseModel):
+    subject_id: str
+    subject_name: str
+    student_id: str
+    total_questions: int
+    total_correct: int
+    overall_score: float
+    weak_concept_count: int
+    strong_concept_count: int
+    concept_breakdown: List[DiagnosticConceptBreakdown]
+    recommended_start_concept_id: Optional[str] = None
+    recommended_start_concept_name: Optional[str] = None
+    summary_message: str
+
 

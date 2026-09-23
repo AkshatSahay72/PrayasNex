@@ -51,10 +51,11 @@ class NoteService:
         db: Session,
         concept_id: str,
         student_id: Optional[str] = None,
-        focus_areas: Optional[List[str]] = None
+        focus_areas: Optional[List[str]] = None,
+        persist: bool = True
     ) -> NoteResponse:
         """
-        Generates or customizes a personalized note based on student's weak areas.
+        Generates or customizes a personalized note based on student's weak areas and persists it.
         """
         concept = db.query(Concept).filter(Concept.id == concept_id).first()
         if not concept:
@@ -66,9 +67,29 @@ class NoteService:
             if student:
                 student_name = student.name
 
-        return AIService.generate_personalized_note(
+        generated_note = AIService.generate_personalized_note(
             concept_id=concept_id,
             concept_name=concept.name,
             student_name=student_name,
             weak_areas=focus_areas
         )
+
+        if persist and db is not None:
+            existing = db.query(Note).filter(Note.concept_id == concept_id).first()
+            if existing:
+                existing.title = generated_note.title
+                existing.markdown_content = generated_note.markdown_content
+                existing.is_ai_generated = generated_note.is_ai_generated
+            else:
+                new_note = Note(
+                    id=f"note.{concept_id}",
+                    concept_id=concept_id,
+                    title=generated_note.title,
+                    markdown_content=generated_note.markdown_content,
+                    is_ai_generated=generated_note.is_ai_generated
+                )
+                db.add(new_note)
+            db.commit()
+
+        return generated_note
+

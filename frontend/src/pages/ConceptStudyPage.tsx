@@ -20,16 +20,16 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
   const [note, setNote] = useState<NoteResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isPersonalized, setIsPersonalized] = useState(false);
-  const [toggling, setToggling] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generationMsg, setGenerationMsg] = useState<string | null>(null);
 
-  const loadData = async (personalizedMode: boolean) => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
       const [conceptData, noteData] = await Promise.all([
         apiClient.getConcept(conceptId, 'demo-student-1'),
-        apiClient.getNote(conceptId, 'demo-student-1', personalizedMode)
+        apiClient.getNote(conceptId, 'demo-student-1', false)
       ]);
       setConcept(conceptData);
       setNote(noteData);
@@ -41,20 +41,25 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
   };
 
   useEffect(() => {
-    loadData(isPersonalized);
+    loadData();
   }, [conceptId]);
 
-  const handleTogglePersonalized = async () => {
-    const next = !isPersonalized;
-    setIsPersonalized(next);
-    setToggling(true);
+  const handleGenerateAINote = async (focusType?: string) => {
     try {
-      const noteData = await apiClient.getNote(conceptId, 'demo-student-1', next);
-      setNote(noteData);
-    } catch (err) {
-      console.error(err);
+      setGenerating(true);
+      setGenerationMsg(null);
+      const focusAreas = focusType ? [focusType] : undefined;
+      const newNote = await apiClient.generateNoteWithAI({
+        concept_id: conceptId,
+        student_id: 'demo-student-1',
+        focus_areas: focusAreas
+      });
+      setNote(newNote);
+      setGenerationMsg('Note refreshed & enriched using Groq AI.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate AI note');
     } finally {
-      setToggling(false);
+      setGenerating(false);
     }
   };
 
@@ -86,22 +91,29 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
       {/* Header Path & Topic */}
       <div className="space-y-1">
         <div className="flex items-center justify-between text-xs text-[#738096]">
-          <span>Optimization</span>
+          <span>Concept Study Guide</span>
           <button
             onClick={onBack}
             className="text-[#8c98ad] hover:text-white transition-colors"
           >
-            ← Back
+            ← Back to Curriculum
           </button>
         </div>
         <div className="h-px bg-[#1f2533] w-full" />
       </div>
 
-      {/* Concept Title & Prerequisite Alert if present */}
+      {/* Concept Title & AI Badge */}
       <div className="space-y-3">
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          {concept.name}
-        </h1>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            {concept.name}
+          </h1>
+          {note.is_ai_generated && (
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-950/60 border border-blue-800/80 text-blue-300">
+              AI-Enriched Note
+            </span>
+          )}
+        </div>
 
         {concept.description && (
           <p className="text-sm text-[#9aa6bb] leading-relaxed">
@@ -125,18 +137,42 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
           </div>
         )}
 
-        {/* Personalized focus note toggle */}
-        <div className="flex items-center justify-between pt-1 text-xs">
-          <span className="text-[#647083]">
-            {isPersonalized ? 'Personalized review focus' : 'Standard curriculum text'}
-          </span>
-          <button
-            onClick={handleTogglePersonalized}
-            disabled={toggling}
-            className="text-blue-400 hover:text-blue-300 underline font-medium disabled:opacity-50"
-          >
-            {toggling ? 'Generating...' : isPersonalized ? 'Switch to standard note' : 'Personalize note for review'}
-          </button>
+        {/* AI Note Generation Actions */}
+        <div className="p-3 bg-[#11151e] border border-[#202738] rounded-md space-y-2">
+          <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+            <span className="text-[#8592a6] font-medium">
+              Study Note Generator (Groq LLM)
+            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => handleGenerateAINote('Intuitive real-world analogies and mental models')}
+                disabled={generating}
+                className="px-2.5 py-1 text-[11px] font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#9eb0cb] border border-[#283244] rounded transition-colors disabled:opacity-50"
+              >
+                {generating ? 'Generating...' : '✨ Analogies & Intuition'}
+              </button>
+              <button
+                onClick={() => handleGenerateAINote('Technical architecture, deep mechanics, and formulas')}
+                disabled={generating}
+                className="px-2.5 py-1 text-[11px] font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#9eb0cb] border border-[#283244] rounded transition-colors disabled:opacity-50"
+              >
+                {generating ? 'Generating...' : '✨ Technical Deep Dive'}
+              </button>
+              <button
+                onClick={() => handleGenerateAINote('Common exam traps, misconceptions, and pitfalls')}
+                disabled={generating}
+                className="px-2.5 py-1 text-[11px] font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#9eb0cb] border border-[#283244] rounded transition-colors disabled:opacity-50"
+              >
+                {generating ? 'Generating...' : '⚡ Pitfalls & Traps'}
+              </button>
+            </div>
+          </div>
+
+          {generationMsg && (
+            <div className="text-[11px] text-emerald-400">
+              ✓ {generationMsg}
+            </div>
+          )}
         </div>
       </div>
 
@@ -151,16 +187,17 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
           onClick={onBack}
           className="px-4 py-2 text-xs font-medium bg-[#141822] hover:bg-[#1d2331] text-[#9ba6b8] border border-[#273042] rounded transition-colors"
         >
-          Mark as understood
+          ← Back to Curriculum
         </button>
 
         <button
           onClick={() => onStartTest(concept.id)}
           className="px-5 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
         >
-          Practice concept →
+          Practice Concept Assessment →
         </button>
       </div>
     </div>
   );
 };
+
