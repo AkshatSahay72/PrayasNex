@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import {
-  ArrowLeft,
-  GitFork,
-  PlayCircle,
-  RefreshCw,
-  Sparkles
-} from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { ConceptSummary, NoteResponse } from '../types';
 
@@ -25,18 +18,18 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
 }) => {
   const [concept, setConcept] = useState<ConceptSummary | null>(null);
   const [note, setNote] = useState<NoteResponse | null>(null);
-  const [personalized, setPersonalized] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPersonalized, setIsPersonalized] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  const loadData = async (isPersonalized: boolean) => {
+  const loadData = async (personalizedMode: boolean) => {
     try {
       setLoading(true);
       setError(null);
       const [conceptData, noteData] = await Promise.all([
         apiClient.getConcept(conceptId, 'demo-student-1'),
-        apiClient.getNote(conceptId, 'demo-student-1', isPersonalized)
+        apiClient.getNote(conceptId, 'demo-student-1', personalizedMode)
       ]);
       setConcept(conceptData);
       setNote(noteData);
@@ -48,151 +41,125 @@ export const ConceptStudyPage: React.FC<ConceptStudyPageProps> = ({
   };
 
   useEffect(() => {
-    loadData(personalized);
+    loadData(isPersonalized);
   }, [conceptId]);
 
   const handleTogglePersonalized = async () => {
-    const nextState = !personalized;
-    setPersonalized(nextState);
-    setGenerating(true);
+    const next = !isPersonalized;
+    setIsPersonalized(next);
+    setToggling(true);
     try {
-      const noteData = await apiClient.getNote(conceptId, 'demo-student-1', nextState);
+      const noteData = await apiClient.getNote(conceptId, 'demo-student-1', next);
       setNote(noteData);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
     } finally {
-      setGenerating(false);
+      setToggling(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-400">
-        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-        <p className="text-sm">Retrieving concept notes...</p>
+      <div className="p-8 max-w-3xl text-sm text-[#738096]">
+        Loading note...
       </div>
     );
   }
 
   if (error || !concept || !note) {
     return (
-      <div className="max-w-4xl mx-auto my-12 p-6 rounded-2xl bg-rose-950/30 border border-rose-800/40 text-rose-300 text-center">
-        <h3 className="text-lg font-semibold mb-2">Error Loading Learning Note</h3>
-        <p className="text-sm text-rose-400/80 mb-4">{error}</p>
+      <div className="p-8 max-w-2xl space-y-4">
+        <h2 className="text-base font-semibold text-rose-300">Unable to load note</h2>
+        <p className="text-xs text-[#8c96a8]">{error}</p>
         <button
           onClick={onBack}
-          className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium"
+          className="px-3 py-1.5 text-xs font-medium bg-[#1c222e] hover:bg-[#252d3d] border border-[#2e3646] rounded text-white"
         >
-          Return to Dashboard
+          Back
         </button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-      {/* Navigation Breadcrumb & Back */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Dashboard</span>
-        </button>
-
-        <span className="font-mono text-xs text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-full border border-indigo-500/20">
-          {concept.id}
-        </span>
-      </div>
-
-      {/* Header Container */}
-      <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Concept Milestone</span>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              {concept.name}
-            </h1>
-          </div>
-
+    <div className="p-6 md:p-12 max-w-3xl mx-auto space-y-8">
+      {/* Header Path & Topic */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-xs text-[#738096]">
+          <span>Optimization</span>
           <button
-            onClick={() => onStartTest(concept.id)}
-            className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 transition-all hover:scale-[1.02] shrink-0"
+            onClick={onBack}
+            className="text-[#8c98ad] hover:text-white transition-colors"
           >
-            <PlayCircle className="w-4 h-4" />
-            <span>Take Concept Test</span>
+            ← Back
           </button>
         </div>
+        <div className="h-px bg-[#1f2533] w-full" />
+      </div>
 
-        {/* Prerequisite Alert if exists */}
+      {/* Concept Title & Prerequisite Alert if present */}
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold text-white tracking-tight">
+          {concept.name}
+        </h1>
+
+        {concept.description && (
+          <p className="text-sm text-[#9aa6bb] leading-relaxed">
+            {concept.description}
+          </p>
+        )}
+
         {concept.prerequisite_concept_name && concept.prerequisite_concept_id && (
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
-            <div className="flex items-center gap-2">
-              <GitFork className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>
-                Prerequisite Foundation: <strong>{concept.prerequisite_concept_name}</strong>
-              </span>
-            </div>
+          <div className="p-3 rounded bg-[#161412] border border-[#3b2d18] text-xs text-[#c49e5d] flex items-center justify-between">
+            <span>
+              Prerequisite foundation: <strong>{concept.prerequisite_concept_name}</strong>
+            </span>
             {onNavigatePrerequisite && (
               <button
                 onClick={() => onNavigatePrerequisite(concept.prerequisite_concept_id!)}
-                className="underline hover:text-amber-200 font-semibold"
+                className="underline hover:text-[#e0b772] font-medium"
               >
-                Review Prerequisite
+                Review prerequisite
               </button>
             )}
           </div>
         )}
 
-        {/* Personalized Note Mode Switcher */}
-        <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs text-slate-300 font-medium">
-              {personalized ? 'Personalized Review Note Mode (AI-Assisted)' : 'Standard Curriculum Note Mode'}
-            </span>
-            {note.is_ai_generated && (
-              <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
-                AI Custom Generated
-              </span>
-            )}
-          </div>
-
+        {/* Personalized focus note toggle */}
+        <div className="flex items-center justify-between pt-1 text-xs">
+          <span className="text-[#647083]">
+            {isPersonalized ? 'Personalized review focus' : 'Standard curriculum text'}
+          </span>
           <button
             onClick={handleTogglePersonalized}
-            disabled={generating}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-indigo-300 border border-slate-700 transition-colors disabled:opacity-50"
+            disabled={toggling}
+            className="text-blue-400 hover:text-blue-300 underline font-medium disabled:opacity-50"
           >
-            {generating ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3.5 h-3.5" />
-            )}
-            <span>{personalized ? 'Switch to Standard' : 'Personalize for My Weak Areas'}</span>
+            {toggling ? 'Generating...' : isPersonalized ? 'Switch to standard note' : 'Personalize note for review'}
           </button>
         </div>
       </div>
 
-      {/* Markdown Content Viewer */}
-      <div className="p-8 rounded-3xl bg-slate-900/70 border border-slate-800/80 shadow-inner">
-        <div className="markdown-content">
-          <ReactMarkdown>{note.markdown_content}</ReactMarkdown>
-        </div>
+      {/* Structured Reading Content */}
+      <article className="study-prose border-t border-[#1f2533] pt-6">
+        <ReactMarkdown>{note.markdown_content}</ReactMarkdown>
+      </article>
 
-        {/* Bottom CTA */}
-        <div className="mt-10 pt-6 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <p className="text-xs text-slate-400">
-            Finished reading? Put your understanding to the test with 5 targeted concept questions.
-          </p>
-          <button
-            onClick={() => onStartTest(concept.id)}
-            className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-sm shadow-md shadow-indigo-600/30 transition-all hover:scale-[1.02]"
-          >
-            <PlayCircle className="w-4 h-4" />
-            <span>Start Practice Assessment</span>
-          </button>
-        </div>
+      {/* Bottom Action Footer */}
+      <div className="pt-8 border-t border-[#1f2533] flex items-center justify-between gap-4">
+        <button
+          onClick={onBack}
+          className="px-4 py-2 text-xs font-medium bg-[#141822] hover:bg-[#1d2331] text-[#9ba6b8] border border-[#273042] rounded transition-colors"
+        >
+          Mark as understood
+        </button>
+
+        <button
+          onClick={() => onStartTest(concept.id)}
+          className="px-5 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+        >
+          Practice concept →
+        </button>
       </div>
     </div>
   );

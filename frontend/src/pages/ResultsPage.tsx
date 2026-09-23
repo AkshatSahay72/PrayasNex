@@ -1,12 +1,4 @@
 import React from 'react';
-import {
-  BookOpen,
-  CheckCircle2,
-  LayoutDashboard,
-  RotateCcw,
-  Sparkles,
-  XCircle
-} from 'lucide-react';
 import type { AssessmentSubmissionResult } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 
@@ -24,176 +16,147 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
   onReturnDashboard
 }) => {
   const rec = result.recommendation;
-  const isWeak = result.status === 'weak';
-  const isStrong = result.status === 'strong';
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-      {/* Top Performance Score Banner */}
-      <div
-        className={`p-6 sm:p-8 rounded-3xl border shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 ${
-          isStrong
-            ? 'bg-gradient-to-r from-emerald-950/80 to-slate-900 border-emerald-500/30 shadow-emerald-950/40'
-            : isWeak
-            ? 'bg-gradient-to-r from-rose-950/80 to-slate-900 border-rose-500/30 shadow-rose-950/40'
-            : 'bg-gradient-to-r from-amber-950/80 to-slate-900 border-amber-500/30 shadow-amber-950/40'
-        }`}
-      >
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Assessment Evaluation
-            </span>
-            <StatusBadge status={result.status} size="sm" />
-          </div>
-
-          <h1 className="text-2xl sm:text-3xl font-black text-white">
-            {isStrong
-              ? 'Excellent Mastery!'
-              : isWeak
-              ? 'Concept Review Recommended'
-              : 'Good Progress, Keep Practicing!'}
-          </h1>
-
-          <p className="text-sm text-slate-300">
-            You answered <strong>{result.correct_answers}</strong> of{' '}
-            <strong>{result.total_questions}</strong> questions correctly on{' '}
-            <span className="text-white font-semibold">"{result.concept_name}"</span>.
-          </p>
+    <div className="p-6 md:p-12 max-w-3xl mx-auto space-y-10">
+      {/* 1. Header & Score Summary */}
+      <div className="space-y-3">
+        <div className="text-xs text-[#738096] uppercase tracking-wider font-semibold">
+          Assessment complete
         </div>
 
-        {/* Circular Score Badge */}
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="text-center p-4 rounded-2xl bg-slate-900/90 border border-slate-800 min-w-[120px]">
-            <span className="block text-3xl sm:text-4xl font-black text-white">
-              {result.score_percentage}%
-            </span>
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              {result.correct_answers}/{result.total_questions} Correct
-            </span>
-          </div>
+        <div className="flex items-baseline gap-4">
+          <span className="text-4xl font-bold text-white tracking-tight">
+            {result.correct_answers} / {result.total_questions}
+          </span>
+          <span className="text-sm text-[#7f8ba0]">
+            ({result.score_percentage}% correct)
+          </span>
         </div>
+
+        <div className="h-px bg-[#1f2533] w-full pt-2" />
       </div>
 
-      {/* Adaptive Recommendation Card */}
-      {rec && (
-        <div className="p-6 sm:p-8 rounded-3xl bg-indigo-950/40 border border-indigo-500/30 shadow-xl space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              <Sparkles className="w-3.5 h-3.5" />
-              Adaptive Next Action
+      {/* 2. Concept Performance */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold text-[#8e9bb0] uppercase tracking-wider">
+          Concept performance
+        </h2>
+
+        <div className="border border-[#222938] rounded-lg overflow-hidden bg-[#11151e]">
+          <div className="p-3.5 flex items-center justify-between">
+            <span className="text-sm font-medium text-white">
+              {result.concept_name}
             </span>
-          </div>
-
-          <h3 className="text-xl font-bold text-white">{rec.title}</h3>
-          <p className="text-sm text-slate-200 leading-relaxed">{rec.recommendation}</p>
-
-          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-400">
-            <strong className="text-slate-300">Why was this recommended? </strong>
-            <span>{rec.reason}</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              onClick={() => onReadNote(rec.prerequisite_concept_id || rec.concept_id)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all hover:scale-105"
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>
-                {rec.prerequisite_concept_name
-                  ? `Review Foundation (${rec.prerequisite_concept_name})`
-                  : 'Study Learning Note'}
-              </span>
-            </button>
-
-            <button
-              onClick={() => onRetake(result.concept_id)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Practice Again</span>
-            </button>
-
-            <button
-              onClick={onReturnDashboard}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white text-xs font-medium border border-slate-800 transition-colors ml-auto"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>Dashboard</span>
-            </button>
+            <StatusBadge status={result.status} />
           </div>
         </div>
+      </section>
+
+      {/* 3. Recommended Next Step */}
+      {rec && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold text-[#8e9bb0] uppercase tracking-wider">
+            Recommended next step
+          </h2>
+
+          <div className="p-5 rounded-lg bg-[#11151e] border border-[#222938] space-y-3">
+            <div className="space-y-1">
+              <div className="text-base font-semibold text-white">
+                {rec.title}
+              </div>
+              <p className="text-xs text-[#8c98ad] leading-relaxed">
+                {rec.recommendation}
+              </p>
+              <div className="text-[11px] text-[#606c7e] pt-1">
+                Reason: {rec.reason}
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                onClick={() => onReadNote(rec.prerequisite_concept_id || rec.concept_id)}
+                className="px-4 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+              >
+                {rec.prerequisite_concept_name
+                  ? `Review ${rec.prerequisite_concept_name}`
+                  : `Review ${rec.concept_name}`}
+              </button>
+
+              <button
+                onClick={() => onRetake(result.concept_id)}
+                className="px-3.5 py-2 text-xs font-medium bg-[#191f2c] hover:bg-[#222a3b] text-[#9ba7ba] border border-[#283142] rounded transition-colors"
+              >
+                Retake test
+              </button>
+
+              <button
+                onClick={onReturnDashboard}
+                className="px-3.5 py-2 text-xs text-[#636f82] hover:text-[#9aa5b8] transition-colors ml-auto"
+              >
+                Return to home
+              </button>
+            </div>
+          </div>
+        </section>
       )}
 
-      {/* Question by Question Review */}
-      <div className="space-y-4">
-        <h3 className="text-xl font-bold text-white tracking-tight">Question Review & Explanations</h3>
-        <p className="text-xs text-slate-400 -mt-2">
-          Review your selected answers and pedagogical explanations.
-        </p>
+      {/* 4. Question Breakdown & Explanations */}
+      <section className="space-y-4 pt-2">
+        <h2 className="text-xs font-semibold text-[#8e9bb0] uppercase tracking-wider">
+          Answer review
+        </h2>
 
         <div className="space-y-4">
           {result.items.map((item, index) => (
             <div
               key={item.question_id}
-              className={`p-6 rounded-2xl border transition-all ${
-                item.is_correct
-                  ? 'bg-slate-900/60 border-emerald-500/30'
-                  : 'bg-slate-900/60 border-rose-500/30'
-              }`}
+              className="p-4 rounded-lg bg-[#11151e] border border-[#222938] space-y-3"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                      item.is_correct
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-rose-500/20 text-rose-400'
-                    }`}
-                  >
-                    {item.is_correct ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <XCircle className="w-4 h-4" />
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-400">Question {index + 1}</span>
-                    <h4 className="text-base font-semibold text-white mt-1 leading-snug">
-                      {item.question_text}
-                    </h4>
-                  </div>
-                </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-medium text-[#738096]">
+                  {index + 1}. {item.question_text}
+                </span>
+                <span
+                  className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                    item.is_correct
+                      ? 'text-emerald-300 bg-emerald-950/60 border border-emerald-800/60'
+                      : 'text-rose-300 bg-rose-950/60 border border-rose-800/60'
+                  }`}
+                >
+                  {item.is_correct ? 'Correct' : 'Incorrect'}
+                </span>
               </div>
 
-              {/* Options Breakdown */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-4">
+              {/* Options list */}
+              <div className="space-y-1.5 pt-1 text-xs">
                 {item.options.map((opt) => {
-                  const isUserChoice = item.selected_option === opt.id;
+                  const isUser = item.selected_option === opt.id;
                   const isCorrect = item.correct_option === opt.id;
 
-                  let borderClass = 'border-slate-800 bg-slate-950/40 text-slate-400';
+                  let style = 'text-[#8793a5] bg-[#0c0f16] border-[#1d232f]';
                   if (isCorrect) {
-                    borderClass = 'border-emerald-500/50 bg-emerald-950/30 text-emerald-200 font-semibold';
-                  } else if (isUserChoice && !item.is_correct) {
-                    borderClass = 'border-rose-500/50 bg-rose-950/30 text-rose-200 line-through';
+                    style = 'text-emerald-200 bg-emerald-950/30 border-emerald-800/50 font-medium';
+                  } else if (isUser && !item.is_correct) {
+                    style = 'text-rose-200 bg-rose-950/30 border-rose-800/50';
                   }
 
                   return (
                     <div
                       key={opt.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl border text-xs leading-relaxed ${borderClass}`}
+                      className={`p-2 rounded border flex items-center justify-between ${style}`}
                     >
-                      <span className="font-bold shrink-0">{opt.id}.</span>
-                      <span>{opt.text}</span>
+                      <span>
+                        <strong>{opt.id}.</strong> {opt.text}
+                      </span>
                       {isCorrect && (
-                        <span className="ml-auto text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded">
-                          Correct
+                        <span className="text-[10px] text-emerald-400 uppercase font-semibold">
+                          Correct answer
                         </span>
                       )}
-                      {isUserChoice && !isCorrect && (
-                        <span className="ml-auto text-[10px] uppercase font-bold text-rose-400 bg-rose-500/20 px-1.5 py-0.5 rounded">
-                          Your Pick
+                      {isUser && !isCorrect && (
+                        <span className="text-[10px] text-rose-400 uppercase font-semibold">
+                          Your answer
                         </span>
                       )}
                     </div>
@@ -201,15 +164,13 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
                 })}
               </div>
 
-              {/* Explanation Box */}
-              <div className="mt-4 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300">
-                <strong className="text-indigo-300">Explanation: </strong>
-                <span>{item.explanation}</span>
+              <div className="text-xs text-[#8c98ad] bg-[#0c0f16] p-2.5 rounded border border-[#1d232f]">
+                <strong className="text-[#aeb9c9]">Explanation:</strong> {item.explanation}
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 };

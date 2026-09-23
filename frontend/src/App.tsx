@@ -1,115 +1,118 @@
 import React, { useState } from 'react';
-import { Navbar } from './components/Navbar';
+import { AppShell, type NavTab } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
-import { SubjectsPage } from './pages/SubjectsPage';
+import { LearnPage } from './pages/LearnPage';
 import { ConceptStudyPage } from './pages/ConceptStudyPage';
 import { AssessmentPage } from './pages/AssessmentPage';
 import { ResultsPage } from './pages/ResultsPage';
-import { AIPlaygroundPage } from './pages/AIPlaygroundPage';
+import { ProgressPage } from './pages/ProgressPage';
+import { QualityInspectorPage } from './pages/QualityInspectorPage';
 import type { AssessmentSubmissionResult } from './types';
 
-type ViewMode =
-  | 'dashboard'
-  | 'curriculum'
+type ActiveView =
+  | 'home'
+  | 'learn'
   | 'study'
   | 'assessment'
   | 'results'
-  | 'playground';
+  | 'progress'
+  | 'inspector';
 
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<'dashboard' | 'curriculum' | 'playground'>('dashboard');
-  const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  const [currentTab, setCurrentTab] = useState<NavTab>('home');
+  const [activeView, setActiveView] = useState<ActiveView>('home');
   const [activeConceptId, setActiveConceptId] = useState<string>('ml.optimization.gradient_descent');
   const [latestResult, setLatestResult] = useState<AssessmentSubmissionResult | null>(null);
 
-  const handleSelectTab = (tab: 'dashboard' | 'curriculum' | 'playground') => {
+  const handleSelectTab = (tab: NavTab) => {
     setCurrentTab(tab);
-    setViewMode(tab);
+    if (tab === 'practice') {
+      setActiveView('assessment');
+    } else {
+      setActiveView(tab);
+    }
   };
 
   const handleOpenConceptStudy = (conceptId: string) => {
     setActiveConceptId(conceptId);
-    setViewMode('study');
+    setActiveView('study');
+    setCurrentTab('learn');
   };
 
   const handleStartTest = (conceptId: string) => {
     setActiveConceptId(conceptId);
-    setViewMode('assessment');
+    setActiveView('assessment');
+    setCurrentTab('practice');
   };
 
   const handleCompleteAssessment = (result: AssessmentSubmissionResult) => {
     setLatestResult(result);
-    setViewMode('results');
+    setActiveView('results');
   };
 
-  const handleReturnDashboard = () => {
-    setCurrentTab('dashboard');
-    setViewMode('dashboard');
+  const handleReturnHome = () => {
+    setCurrentTab('home');
+    setActiveView('home');
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Top Navigation */}
-      <Navbar
-        currentTab={currentTab}
-        onSelectTab={handleSelectTab}
-        studentName="Alex Rivera"
-      />
+    <AppShell
+      currentTab={currentTab}
+      onSelectTab={handleSelectTab}
+      activeSubjectName="Machine Learning"
+      activeTopicName="Optimization"
+      studentName="Alex Rivera"
+    >
+      {activeView === 'home' && (
+        <DashboardPage
+          onSelectConcept={handleOpenConceptStudy}
+          onStartTest={handleStartTest}
+          onBrowseLearn={() => handleSelectTab('learn')}
+        />
+      )}
 
-      {/* Main View Router */}
-      <main className="flex-1 pb-16">
-        {viewMode === 'dashboard' && (
-          <DashboardPage
-            onSelectConcept={handleOpenConceptStudy}
-            onStartTest={handleStartTest}
-            onBrowseCurriculum={() => handleSelectTab('curriculum')}
-          />
-        )}
+      {activeView === 'learn' && (
+        <LearnPage
+          onSelectConcept={handleOpenConceptStudy}
+          onStartTest={handleStartTest}
+        />
+      )}
 
-        {viewMode === 'curriculum' && (
-          <SubjectsPage
-            onSelectConcept={handleOpenConceptStudy}
-            onStartTest={handleStartTest}
-          />
-        )}
+      {activeView === 'study' && (
+        <ConceptStudyPage
+          conceptId={activeConceptId}
+          onBack={handleReturnHome}
+          onStartTest={handleStartTest}
+          onNavigatePrerequisite={(prereqId) => handleOpenConceptStudy(prereqId)}
+        />
+      )}
 
-        {viewMode === 'study' && (
-          <ConceptStudyPage
-            conceptId={activeConceptId}
-            onBack={handleReturnDashboard}
-            onStartTest={handleStartTest}
-            onNavigatePrerequisite={(prereqId) => handleOpenConceptStudy(prereqId)}
-          />
-        )}
+      {activeView === 'assessment' && (
+        <AssessmentPage
+          conceptId={activeConceptId}
+          onCancel={handleReturnHome}
+          onComplete={handleCompleteAssessment}
+        />
+      )}
 
-        {viewMode === 'assessment' && (
-          <AssessmentPage
-            conceptId={activeConceptId}
-            onCancel={handleReturnDashboard}
-            onComplete={handleCompleteAssessment}
-          />
-        )}
+      {activeView === 'results' && latestResult && (
+        <ResultsPage
+          result={latestResult}
+          onRetake={handleStartTest}
+          onReadNote={handleOpenConceptStudy}
+          onReturnDashboard={handleReturnHome}
+        />
+      )}
 
-        {viewMode === 'results' && latestResult && (
-          <ResultsPage
-            result={latestResult}
-            onRetake={handleStartTest}
-            onReadNote={handleOpenConceptStudy}
-            onReturnDashboard={handleReturnDashboard}
-          />
-        )}
+      {activeView === 'progress' && (
+        <ProgressPage
+          onSelectConcept={handleOpenConceptStudy}
+          onStartTest={handleStartTest}
+        />
+      )}
 
-        {viewMode === 'playground' && <AIPlaygroundPage />}
-      </main>
-
-      {/* Modern Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>PrayasNex • Adaptive Learning Platform Prototype</span>
-          <span className="font-mono text-slate-600">FastAPI • SQLite • React • TypeScript • Tailwind</span>
-        </div>
-      </footer>
-    </div>
+      {activeView === 'inspector' && <QualityInspectorPage />}
+    </AppShell>
   );
 };
 

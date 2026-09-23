@@ -1,13 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import {
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  CheckCircle2,
-  HelpCircle,
-  RefreshCw,
-  ShieldCheck
-} from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { SecureQuestion, AssessmentSubmissionResult } from '../types';
 
@@ -56,11 +47,10 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
   };
 
   const handleSubmit = async () => {
-    // Check if any question remains unanswered
-    const unanswered = questions.filter((q) => !selectedAnswers[q.id]);
-    if (unanswered.length > 0) {
+    const unansweredCount = questions.filter((q) => !selectedAnswers[q.id]).length;
+    if (unansweredCount > 0) {
       const confirmSubmit = window.confirm(
-        `You have ${unanswered.length} unanswered question(s). Submit test anyway?`
+        `You have ${unansweredCount} unanswered question(s). Submit assessment now?`
       );
       if (!confirmSubmit) return;
     }
@@ -88,168 +78,113 @@ export const AssessmentPage: React.FC<AssessmentPageProps> = ({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-400">
-        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-        <p className="text-sm">Generating secure assessment session...</p>
+      <div className="p-8 max-w-2xl mx-auto text-sm text-[#738096]">
+        Preparing assessment session...
       </div>
     );
   }
 
   if (error || questions.length === 0) {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-6 rounded-2xl bg-rose-950/30 border border-rose-800/40 text-rose-300 text-center">
-        <AlertCircle className="w-10 h-10 mx-auto mb-3 text-rose-400" />
-        <h3 className="text-lg font-semibold mb-1">Assessment Loading Error</h3>
-        <p className="text-sm text-rose-400/80 mb-4">{error}</p>
+      <div className="p-8 max-w-2xl mx-auto space-y-4">
+        <h2 className="text-base font-semibold text-rose-300">Assessment Error</h2>
+        <p className="text-xs text-[#8c96a8]">{error}</p>
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium"
+          className="px-3 py-1.5 text-xs font-medium bg-[#1c222e] hover:bg-[#252d3d] border border-[#2e3646] rounded text-white"
         >
-          Return to Dashboard
+          Return
         </button>
       </div>
     );
   }
 
   const currentQ = questions[currentIndex];
-  const progressPct = Math.round(((currentIndex + 1) / questions.length) * 100);
-  const totalAnswered = Object.keys(selectedAnswers).length;
+  const isLastQuestion = currentIndex === questions.length - 1;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
-      {/* Top Session & Security Bar */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Exit Assessment</span>
-        </button>
-
-        <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-          <ShieldCheck className="w-4 h-4" />
-          <span>Active Test (Backend Evaluated)</span>
-        </div>
-      </div>
-
-      {/* Test Progress Card */}
-      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span className="font-semibold text-slate-200">
+    <div className="p-6 md:p-12 max-w-2xl mx-auto space-y-8">
+      {/* Test Meta Header */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-xs text-[#738096]">
+          <span>Optimization</span>
+          <span>
             Question {currentIndex + 1} of {questions.length}
           </span>
-          <span>
-            {totalAnswered} of {questions.length} answered ({progressPct}%)
-          </span>
         </div>
+        <div className="h-px bg-[#1f2533] w-full" />
+      </div>
 
-        {/* Visual Progress Bar */}
-        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-          <div
-            className="bg-indigo-500 h-full transition-all duration-300 rounded-full"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
+      {/* Question Text */}
+      <div className="space-y-6">
+        <h2 className="text-base sm:text-lg font-semibold text-white leading-relaxed">
+          {currentQ.question_text}
+        </h2>
 
-        {/* Question Selector Dots */}
-        <div className="flex items-center justify-center gap-2 pt-2">
-          {questions.map((q, idx) => {
-            const isAnswered = !!selectedAnswers[q.id];
-            const isCurrent = idx === currentIndex;
+        {/* Clean 4 Options */}
+        <div className="space-y-2.5">
+          {currentQ.options.map((opt) => {
+            const isSelected = selectedAnswers[currentQ.id] === opt.id;
 
             return (
               <button
-                key={q.id}
-                onClick={() => setCurrentIndex(idx)}
-                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
-                  isCurrent
-                    ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
-                    : isAnswered
-                    ? 'bg-slate-700 text-emerald-300 border border-emerald-500/40'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                key={opt.id}
+                type="button"
+                onClick={() => handleSelectOption(currentQ.id, opt.id)}
+                className={`w-full text-left p-3.5 rounded border text-sm transition-colors flex items-start gap-3 ${
+                  isSelected
+                    ? 'bg-[#182133] border-blue-500 text-white font-medium'
+                    : 'bg-[#11151e] border-[#222938] text-[#c0c9d7] hover:bg-[#151a24] hover:border-[#2e374a]'
                 }`}
               >
-                {idx + 1}
+                <span
+                  className={`w-5 h-5 rounded flex items-center justify-center text-xs shrink-0 mt-0.5 font-bold ${
+                    isSelected
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-[#1b2230] text-[#717d91]'
+                  }`}
+                >
+                  {opt.id}
+                </span>
+                <span className="leading-snug">{opt.text}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Active Question Box */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl space-y-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-400">
-            <HelpCircle className="w-4 h-4" />
-            <span>Multiple Choice Question</span>
-          </div>
-          <h2 className="text-lg sm:text-xl font-bold text-white leading-relaxed">
-            {currentQ.question_text}
-          </h2>
-        </div>
+      {/* Navigation Buttons */}
+      <div className="pt-6 border-t border-[#1f2533] flex items-center justify-between">
+        <button
+          onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+          disabled={currentIndex === 0}
+          className="px-4 py-2 text-xs font-medium bg-[#141822] hover:bg-[#1d2331] text-[#9ba6b8] border border-[#273042] rounded transition-colors disabled:opacity-30 disabled:pointer-events-none"
+        >
+          Previous
+        </button>
 
-        {/* 4 Options */}
-        <div className="space-y-3">
-          {currentQ.options.map((opt) => {
-            const isSelected = selectedAnswers[currentQ.id] === opt.id;
-
-            return (
-              <div
-                key={opt.id}
-                onClick={() => handleSelectOption(currentQ.id, opt.id)}
-                className={`flex items-center gap-4 p-4 rounded-2xl border cursor-pointer transition-all ${
-                  isSelected
-                    ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-600/10'
-                    : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/40'
-                }`}
-              >
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 transition-all ${
-                    isSelected
-                      ? 'bg-indigo-600 text-white shadow'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {opt.id}
-                </div>
-                <span className="text-sm sm:text-base leading-snug">{opt.text}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Bottom Pagination & Submit */}
-        <div className="flex items-center justify-between pt-4 border-t border-slate-800/80">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
-            disabled={currentIndex === 0}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            onClick={onCancel}
+            className="px-3 py-2 text-xs text-[#636f82] hover:text-[#9aa5b8] transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Previous</span>
+            Cancel
           </button>
 
-          {currentIndex < questions.length - 1 ? (
-            <button
-              onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
-              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition-colors"
-            >
-              <span>Next</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
+          {isLastQuestion ? (
             <button
               onClick={handleSubmit}
               disabled={submitting}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all hover:scale-105 disabled:opacity-50"
+              className="px-5 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors disabled:opacity-50"
             >
-              {submitting ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4" />
-              )}
-              <span>Submit Assessment</span>
+              {submitting ? 'Evaluating...' : 'Submit test'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
+              className="px-5 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+            >
+              Next →
             </button>
           )}
         </div>
