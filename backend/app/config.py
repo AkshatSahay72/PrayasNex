@@ -14,11 +14,10 @@ class Settings(BaseSettings):
     PORT: int = int(os.getenv("PORT", "8000"))
     CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173")
 
-    # AI Configuration
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "mock")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    AI_MODEL_NAME: str = os.getenv("AI_MODEL_NAME", "gemini-1.5-flash")
+    # Groq AI Configuration
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "groq")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
     # Adaptive Logic Rules
     WEAK_THRESHOLD: float = float(os.getenv("WEAK_THRESHOLD", "0.50"))

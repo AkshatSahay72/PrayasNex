@@ -25,6 +25,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+.env
 
 # Database & Logs
 *.db
