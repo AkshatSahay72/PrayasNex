@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database.db import Base, engine, SessionLocal
+from database.db import Base, engine, SessionLocal, migrate_schema
 from database.seed import seed_database
 from backend.app.config import settings
 from backend.app.models.schema import Student
@@ -10,9 +10,10 @@ from backend.app.routers import subjects, concepts, assessments, recommendations
 
 
 def _init_database_sync():
-    """Initializes schema and seeds demonstration data in a background thread."""
+    """Initializes schema, applies migrations, and seeds demonstration data in a background thread."""
     try:
         Base.metadata.create_all(bind=engine)
+        migrate_schema()
         db = SessionLocal()
         try:
             has_student = db.query(Student).first()
@@ -23,6 +24,7 @@ def _init_database_sync():
             db.close()
     except Exception as e:
         print(f"Database initialization warning (deferred/skipped): {e}")
+
 
 
 @asynccontextmanager

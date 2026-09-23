@@ -38,3 +38,40 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def migrate_schema():
+    """Widens column types in existing PostgreSQL databases if needed."""
+    if not DATABASE_URL.startswith("sqlite"):
+        from sqlalchemy import text
+        alters = [
+            "ALTER TABLE students ALTER COLUMN id TYPE VARCHAR(128);",
+            "ALTER TABLE subjects ALTER COLUMN id TYPE VARCHAR(128);",
+            "ALTER TABLE subjects ALTER COLUMN name TYPE VARCHAR(256);",
+            "ALTER TABLE topics ALTER COLUMN id TYPE VARCHAR(256);",
+            "ALTER TABLE topics ALTER COLUMN subject_id TYPE VARCHAR(128);",
+            "ALTER TABLE topics ALTER COLUMN name TYPE VARCHAR(256);",
+            "ALTER TABLE concepts ALTER COLUMN id TYPE VARCHAR(256);",
+            "ALTER TABLE concepts ALTER COLUMN topic_id TYPE VARCHAR(256);",
+            "ALTER TABLE concepts ALTER COLUMN name TYPE VARCHAR(256);",
+            "ALTER TABLE concepts ALTER COLUMN prerequisite_concept_id TYPE VARCHAR(256);",
+            "ALTER TABLE questions ALTER COLUMN id TYPE VARCHAR(128);",
+            "ALTER TABLE questions ALTER COLUMN concept_id TYPE VARCHAR(256);",
+            "ALTER TABLE attempts ALTER COLUMN id TYPE VARCHAR(128);",
+            "ALTER TABLE attempts ALTER COLUMN student_id TYPE VARCHAR(128);",
+            "ALTER TABLE attempts ALTER COLUMN question_id TYPE VARCHAR(128);",
+            "ALTER TABLE attempts ALTER COLUMN concept_id TYPE VARCHAR(256);",
+            "ALTER TABLE student_concept_progress ALTER COLUMN id TYPE VARCHAR(512);",
+            "ALTER TABLE student_concept_progress ALTER COLUMN student_id TYPE VARCHAR(128);",
+            "ALTER TABLE student_concept_progress ALTER COLUMN concept_id TYPE VARCHAR(256);",
+            "ALTER TABLE notes ALTER COLUMN id TYPE VARCHAR(512);",
+            "ALTER TABLE notes ALTER COLUMN concept_id TYPE VARCHAR(256);",
+            "ALTER TABLE notes ALTER COLUMN title TYPE VARCHAR(256);",
+        ]
+        with engine.begin() as conn:
+            for sql in alters:
+                try:
+                    conn.execute(text(sql))
+                except Exception:
+                    pass
+
