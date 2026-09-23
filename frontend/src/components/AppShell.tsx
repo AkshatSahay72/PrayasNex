@@ -4,8 +4,7 @@ import {
   CheckSquare,
   Home,
   Sliders,
-  TrendingUp,
-  User
+  TrendingUp
 } from 'lucide-react';
 
 export type NavTab = 'home' | 'learn' | 'practice' | 'progress' | 'inspector';
@@ -13,25 +12,34 @@ export type NavTab = 'home' | 'learn' | 'practice' | 'progress' | 'inspector';
 interface AppShellProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
-  activeSubjectName?: string;
-  activeTopicName?: string;
-  studentName?: string;
+  breadcrumbs?: string[];
   children: React.ReactNode;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
   currentTab,
   onSelectTab,
-  activeSubjectName = 'Machine Learning',
-  activeTopicName = 'Optimization',
-  studentName = 'Alex Rivera',
+  breadcrumbs,
   children
 }) => {
+  // Default dynamic breadcrumbs based on active tab if custom not supplied
+  const resolvedBreadcrumbs = breadcrumbs && breadcrumbs.length > 0
+    ? breadcrumbs
+    : currentTab === 'home'
+    ? []
+    : currentTab === 'learn'
+    ? ['Curriculum']
+    : currentTab === 'practice'
+    ? ['Practice & Assessments']
+    : currentTab === 'progress'
+    ? ['Progress & Analytics']
+    : ['Quality Inspector'];
+
   return (
     <div className="min-h-screen bg-[#0b0d13] text-[#e1e4ea] flex flex-col antialiased">
       {/* Top Application Bar */}
       <header className="h-12 border-b border-[#222733] bg-[#11141c] px-4 flex items-center justify-between text-xs z-30">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => onSelectTab('home')}
             className="font-semibold text-white tracking-tight hover:text-blue-400 transition-colors flex items-center gap-2"
@@ -41,20 +49,24 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
             <span>PrayasNex</span>
           </button>
-          <span className="text-[#454e60]">/</span>
-          <span className="text-[#8c96a8]">{activeSubjectName}</span>
-          <span className="text-[#454e60]">/</span>
-          <span className="text-[#cfd5e1] font-medium">{activeTopicName}</span>
-        </div>
 
-        {/* Student Profile Info */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded bg-[#171c26] border border-[#262c3a] text-xs text-[#a3adbf]">
-            <User className="w-3.5 h-3.5 text-[#738096]" />
-            <span>{studentName}</span>
-          </div>
+          {resolvedBreadcrumbs.map((crumb, idx) => (
+            <React.Fragment key={idx}>
+              <span className="text-[#3c4556]">/</span>
+              <span
+                className={
+                  idx === resolvedBreadcrumbs.length - 1
+                    ? 'text-[#cfd5e1] font-medium'
+                    : 'text-[#8c96a8]'
+                }
+              >
+                {crumb}
+              </span>
+            </React.Fragment>
+          ))}
         </div>
       </header>
+
 
       {/* Main Workspace Layout (Sidebar + Content Area) */}
       <div className="flex-1 flex flex-col md:flex-row">

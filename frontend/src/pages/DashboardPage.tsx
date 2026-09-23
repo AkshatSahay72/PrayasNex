@@ -74,7 +74,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           Welcome, {dashboard.student_name}
         </h1>
         <p className="text-xs text-[#7f8ba0] mt-1">
-          Machine Learning • Optimization
+          Adaptive Learning Workspace • {dashboard.all_progress.length} tracked concepts
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {continueConcept.concept_name}
               </div>
               <div className="text-xs text-[#7e8aa0] mt-0.5">
-                Optimization
+                {continueConcept.topic_name || 'Active Concept'}
               </div>
             </div>
 
@@ -184,7 +184,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     {prog.concept_name}
                   </td>
                   <td className="px-4 py-3 text-[#7f8ba0]">
-                    Optimization
+                    {prog.topic_name || 'General'}
                   </td>
                   <td className="px-4 py-3 text-[#7f8ba0]">
                     {prog.attempts_count > 0 ? `${prog.correct_count} / ${prog.attempts_count}` : '—'}
@@ -198,6 +198,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </table>
         </div>
       </section>
+
 
       {/* 4. Next Recommended Activity Section */}
       {rec && (

@@ -55,14 +55,34 @@ export const App: React.FC = () => {
     setActiveView('home');
   };
 
+  const getBreadcrumbs = (): string[] => {
+    switch (activeView) {
+      case 'home':
+        return [];
+      case 'learn':
+        return ['Curriculum'];
+      case 'study':
+        return ['Curriculum', 'Study Guide'];
+      case 'assessment':
+        return ['Practice', 'Concept Assessment'];
+      case 'results':
+        return ['Practice', 'Assessment Diagnostic Results'];
+      case 'progress':
+        return ['Progress & Analytics'];
+      case 'inspector':
+        return ['Quality Inspector'];
+      default:
+        return [];
+    }
+  };
+
   return (
     <AppShell
       currentTab={currentTab}
       onSelectTab={handleSelectTab}
-      activeSubjectName="Machine Learning"
-      activeTopicName="Optimization"
-      studentName="Alex Rivera"
+      breadcrumbs={getBreadcrumbs()}
     >
+
       {activeView === 'home' && (
         <DashboardPage
           onSelectConcept={handleOpenConceptStudy}
