@@ -4,9 +4,37 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./adaptive_learning.db").strip()
 
+# Detect available PostgreSQL drivers
+HAS_PSYCOPG = False
+try:
+    import psycopg  # noqa: F401
+    HAS_PSYCOPG = True
+except ImportError:
+    pass
+
+HAS_PSYCOPG2 = False
+try:
+    import psycopg2  # noqa: F401
+    HAS_PSYCOPG2 = True
+except ImportError:
+    pass
+
 # Neon / Render normalization: postgres:// -> postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Ensure proper driver specification for PostgreSQL URLs
+if DATABASE_URL.startswith("postgresql://"):
+    if HAS_PSYCOPG:
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif HAS_PSYCOPG2:
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql+psycopg://"):
+    if not HAS_PSYCOPG and HAS_PSYCOPG2:
+        DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
+elif DATABASE_URL.startswith("postgresql+psycopg2://"):
+    if not HAS_PSYCOPG2 and HAS_PSYCOPG:
+        DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
 
 engine_kwargs = {}
 
