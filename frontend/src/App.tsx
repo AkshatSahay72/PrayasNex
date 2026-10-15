@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppShell, type NavTab } from './components/AppShell';
+import { AppShell, type NavTab, type BreadcrumbItem } from './components/AppShell';
 import { DashboardPage } from './pages/DashboardPage';
 import { LearnPage } from './pages/LearnPage';
 import { ConceptStudyPage } from './pages/ConceptStudyPage';
@@ -21,11 +21,13 @@ type ActiveView =
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const [activeView, setActiveView] = useState<ActiveView>('home');
+  const [previousView, setPreviousView] = useState<ActiveView>('home');
   const [activeConceptId, setActiveConceptId] = useState<string>('ml.optimization.gradient_descent');
   const [latestResult, setLatestResult] = useState<AssessmentSubmissionResult | null>(null);
 
   const handleSelectTab = (tab: NavTab) => {
     setCurrentTab(tab);
+    setPreviousView(activeView);
     if (tab === 'practice') {
       setActiveView('assessment');
     } else {
@@ -35,19 +37,23 @@ export const App: React.FC = () => {
 
   const handleOpenConceptStudy = (conceptId: string) => {
     setActiveConceptId(conceptId);
+    setPreviousView(activeView);
     setActiveView('study');
     setCurrentTab('learn');
   };
 
   const handleStartTest = (conceptId: string) => {
     setActiveConceptId(conceptId);
+    setPreviousView(activeView);
     setActiveView('assessment');
     setCurrentTab('practice');
   };
 
   const handleCompleteAssessment = (result: AssessmentSubmissionResult) => {
     setLatestResult(result);
+    setPreviousView('assessment');
     setActiveView('results');
+    setCurrentTab('practice');
   };
 
   const handleReturnHome = () => {
@@ -55,22 +61,54 @@ export const App: React.FC = () => {
     setActiveView('home');
   };
 
-  const getBreadcrumbs = (): string[] => {
+  const handleReturnFromStudy = () => {
+    if (previousView === 'learn') {
+      setCurrentTab('learn');
+      setActiveView('learn');
+    } else {
+      setCurrentTab('learn');
+      setActiveView('learn');
+    }
+  };
+
+  const handleCancelAssessment = () => {
+    if (previousView === 'study') {
+      setCurrentTab('learn');
+      setActiveView('study');
+    } else if (previousView === 'learn') {
+      setCurrentTab('learn');
+      setActiveView('learn');
+    } else {
+      setCurrentTab('home');
+      setActiveView('home');
+    }
+  };
+
+  const getBreadcrumbs = (): BreadcrumbItem[] => {
     switch (activeView) {
       case 'home':
         return [];
       case 'learn':
-        return ['Curriculum'];
+        return [{ label: 'Curriculum & Learn' }];
       case 'study':
-        return ['Curriculum', 'Study Guide'];
+        return [
+          { label: 'Curriculum & Learn', onClick: () => handleSelectTab('learn') },
+          { label: 'Concept Study Guide' }
+        ];
       case 'assessment':
-        return ['Practice', 'Concept Assessment'];
+        return [
+          { label: 'Practice & Assess', onClick: () => handleSelectTab('practice') },
+          { label: 'Concept Assessment' }
+        ];
       case 'results':
-        return ['Practice', 'Assessment Diagnostic Results'];
+        return [
+          { label: 'Practice & Assess', onClick: () => handleSelectTab('practice') },
+          { label: 'Assessment Diagnostic Results' }
+        ];
       case 'progress':
-        return ['Progress & Analytics'];
+        return [{ label: 'Progress & Analytics' }];
       case 'inspector':
-        return ['Quality Inspector'];
+        return [{ label: 'Quality Inspector' }];
       default:
         return [];
     }
@@ -82,7 +120,6 @@ export const App: React.FC = () => {
       onSelectTab={handleSelectTab}
       breadcrumbs={getBreadcrumbs()}
     >
-
       {activeView === 'home' && (
         <DashboardPage
           onSelectConcept={handleOpenConceptStudy}
@@ -101,7 +138,7 @@ export const App: React.FC = () => {
       {activeView === 'study' && (
         <ConceptStudyPage
           conceptId={activeConceptId}
-          onBack={handleReturnHome}
+          onBack={handleReturnFromStudy}
           onStartTest={handleStartTest}
           onNavigatePrerequisite={(prereqId) => handleOpenConceptStudy(prereqId)}
         />
@@ -110,7 +147,7 @@ export const App: React.FC = () => {
       {activeView === 'assessment' && (
         <AssessmentPage
           conceptId={activeConceptId}
-          onCancel={handleReturnHome}
+          onCancel={handleCancelAssessment}
           onComplete={handleCompleteAssessment}
         />
       )}

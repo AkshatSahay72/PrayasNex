@@ -1,7 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { apiClient } from '../api/client';
 import type { SubjectDetail, SecureQuestion, DiagnosticResult } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
+import {
+  AlertCircle,
+  BookOpen,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  Plus,
+  Search,
+  Sparkles,
+  Zap,
+  X
+} from 'lucide-react';
 
 interface LearnPageProps {
   onSelectConcept: (conceptId: string) => void;
@@ -18,6 +30,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal states
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -64,11 +77,13 @@ export const LearnPage: React.FC<LearnPageProps> = ({
   const [diagnosticCurrentIndex, setDiagnosticCurrentIndex] = useState<number>(0);
   const [diagnosticLoading, setDiagnosticLoading] = useState<boolean>(false);
   const [diagnosticSubmitting, setDiagnosticSubmitting] = useState<boolean>(false);
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
 
-  const fetchSubjects = async () => {
+  const fetchSubjects = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await apiClient.getSubjects('demo-student-1');
       setSubjects(data);
     } catch (err: any) {
@@ -76,23 +91,35 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchSubjects();
   }, []);
 
-  // Collect all concepts across all subjects/topics for prerequisite selection
-  const allConcepts: { id: string; name: string }[] = [];
-  subjects.forEach((s) => {
-    s.topics.forEach((t) => {
-      t.concepts.forEach((c) => {
-        allConcepts.push({ id: c.id, name: `${c.name} (${t.name})` });
-      });
-    });
-  });
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await apiClient.getSubjects('demo-student-1');
+        if (isMounted) {
+          setSubjects(data);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError(err.message || 'Failed to load curriculum');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  const resetForms = () => {
+  const resetForms = useCallback(() => {
     setActiveModal(null);
     setModalError(null);
     setSubjectName('');
@@ -114,7 +141,44 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     setAiSubjectName('');
     setAiSubjectDesc('');
     setAiConceptHint('');
-  };
+  }, []);
+
+  // Keyboard Escape listener to dismiss any open modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (activeDiagnosticSubject) {
+          setActiveDiagnosticSubject(null);
+        } else if (activeModal) {
+          resetForms();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeDiagnosticSubject, activeModal, resetForms]);
+
+  // Lock body scroll when modal or diagnostic is open
+  useEffect(() => {
+    if (activeModal || activeDiagnosticSubject) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [activeModal, activeDiagnosticSubject]);
+
+  // Collect all concepts across all subjects/topics for prerequisite selection
+  const allConcepts: { id: string; name: string }[] = [];
+  subjects.forEach((s) => {
+    s.topics.forEach((t) => {
+      t.concepts.forEach((c) => {
+        allConcepts.push({ id: c.id, name: `${c.name} (${t.name})` });
+      });
+    });
+  });
 
   // 1. Manual Create Subject
   const handleCreateSubject = async (e: React.FormEvent) => {
@@ -127,7 +191,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
         name: subjectName.trim(),
         description: subjectDescription.trim() || undefined,
       });
-      setActionSuccess(`Subject "${subjectName.trim()}" created.`);
+      setActionSuccess(`Subject "${subjectName.trim()}" created successfully.`);
       resetForms();
       await fetchSubjects();
     } catch (err: any) {
@@ -265,6 +329,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     try {
       setDiagnosticLoading(true);
       setDiagnosticResult(null);
+      setDiagnosticError(null);
       setActiveDiagnosticSubject({ id: subjectId, name: subjectName });
       setDiagnosticAnswers({});
       setDiagnosticCurrentIndex(0);
@@ -272,8 +337,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
       const qs = await apiClient.getDiagnosticQuestions(subjectId);
       setDiagnosticQuestions(qs);
     } catch (err: any) {
-      alert(err.message || 'Failed to load diagnostic assessment for this subject.');
-      setActiveDiagnosticSubject(null);
+      setDiagnosticError(err.message || 'Failed to load diagnostic assessment for this subject.');
     } finally {
       setDiagnosticLoading(false);
     }
@@ -287,6 +351,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     if (!activeDiagnosticSubject) return;
     try {
       setDiagnosticSubmitting(true);
+      setDiagnosticError(null);
       const answersPayload = diagnosticQuestions.map((q) => ({
         question_id: q.id,
         concept_id: q.concept_id,
@@ -302,41 +367,79 @@ export const LearnPage: React.FC<LearnPageProps> = ({
       setDiagnosticResult(res);
       await fetchSubjects();
     } catch (err: any) {
-      alert(err.message || 'Failed to submit diagnostic assessment');
+      setDiagnosticError(err.message || 'Failed to submit diagnostic assessment');
     } finally {
       setDiagnosticSubmitting(false);
     }
   };
 
+  // Filter subjects / topics / concepts by searchQuery
+  const filteredSubjects = subjects
+    .map((s) => {
+      const q = searchQuery.toLowerCase();
+      if (!q) return s;
+      const subjectMatches = s.name.toLowerCase().includes(q) || (s.description && s.description.toLowerCase().includes(q));
+      if (subjectMatches) return s;
+
+      const filteredTopics = s.topics
+        .map((t) => {
+          const topicMatches = t.name.toLowerCase().includes(q);
+          const filteredConcepts = t.concepts.filter((c) =>
+            c.name.toLowerCase().includes(q) || (c.description && c.description.toLowerCase().includes(q))
+          );
+          if (topicMatches || filteredConcepts.length > 0) {
+            return { ...t, concepts: filteredConcepts.length > 0 ? filteredConcepts : t.concepts };
+          }
+          return null;
+        })
+        .filter((t): t is typeof s.topics[0] => t !== null);
+
+      if (filteredTopics.length > 0) {
+        return { ...s, topics: filteredTopics };
+      }
+      return null;
+    })
+    .filter((s): s is SubjectDetail => s !== null);
+
   if (loading) {
     return (
-      <div className="p-8 max-w-4xl text-sm text-[#738096]">
-        Loading curriculum modules...
+      <div className="p-6 md:p-10 max-w-4xl space-y-6 animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-64 bg-[#182030] rounded" />
+          <div className="h-8 w-44 bg-[#182030] rounded" />
+        </div>
+        <div className="h-28 bg-[#121622] rounded-lg border border-[#1f2638]" />
+        <div className="h-44 bg-[#121622] rounded-lg border border-[#1f2638]" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8 max-w-2xl space-y-4">
-        <h2 className="text-base font-semibold text-rose-300">Error loading curriculum</h2>
-        <p className="text-xs text-[#8c96a8]">{error}</p>
+      <div className="p-6 md:p-10 max-w-2xl space-y-4">
+        <div className="p-4 rounded-lg bg-rose-950/40 border border-rose-800/80 text-rose-200 space-y-2">
+          <div className="flex items-center gap-2 font-semibold text-sm text-rose-300">
+            <AlertCircle className="w-4 h-4" />
+            <span>Error loading curriculum modules</span>
+          </div>
+          <p className="text-xs text-rose-300/80">{error}</p>
+        </div>
         <button
           onClick={fetchSubjects}
-          className="px-3 py-1.5 text-xs font-medium bg-[#1e2533] hover:bg-[#283142] text-white rounded"
+          className="px-4 py-2 text-xs font-medium bg-[#1e2533] hover:bg-[#283142] text-white rounded-md transition-colors"
         >
-          Retry
+          Retry Connection
         </button>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl space-y-10">
+    <div className="p-4 sm:p-6 md:p-10 max-w-4xl space-y-8">
       {/* Header with Title & Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Curriculum & Concepts</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Curriculum & Knowledge Graph</h1>
           <p className="text-xs text-[#7f8ba0] mt-1">
             Structured knowledge graph with prerequisite dependencies and diagnostic baseline assessment.
           </p>
@@ -350,8 +453,8 @@ export const LearnPage: React.FC<LearnPageProps> = ({
             }}
             className="px-3.5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-md transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
           >
-            <span>✨</span>
-            <span>AI Generate Subject (Groq)</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI Curriculum (Groq)</span>
           </button>
 
           <button
@@ -359,58 +462,82 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               resetForms();
               setActiveModal('subject');
             }}
-            className="px-3 py-2 text-xs font-medium bg-[#1c222e] hover:bg-[#262f40] text-[#a4b2c7] border border-[#2b3548] rounded-md transition-colors shrink-0"
+            className="px-3 py-2 text-xs font-medium bg-[#1c222e] hover:bg-[#262f40] text-[#a4b2c7] border border-[#2b3548] rounded-md transition-colors shrink-0 flex items-center gap-1"
           >
-            + Manual Subject
+            <Plus className="w-3.5 h-3.5" />
+            <span>Manual Subject</span>
           </button>
         </div>
       </div>
 
-      {/* Action Notification */}
+      {/* Action Notification Banner */}
       {actionSuccess && (
         <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-md flex items-center justify-between text-xs text-emerald-300">
-          <span>{actionSuccess}</span>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{actionSuccess}</span>
+          </div>
           <button
             onClick={() => setActionSuccess(null)}
-            className="text-emerald-400 hover:text-white font-bold ml-4"
+            className="text-emerald-400 hover:text-white font-bold ml-4 p-1"
+            aria-label="Dismiss message"
           >
-            ×
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
 
+      {/* Search Bar */}
+      {subjects.length > 0 && (
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#556379] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search subjects, topics, or concepts..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 text-xs bg-[#11141c] border border-[#202738] rounded-lg text-white placeholder-[#556379] focus:outline-none focus:border-blue-500 transition-colors"
+          />
+        </div>
+      )}
+
       {/* Subjects List */}
-      {subjects.length === 0 ? (
+      {filteredSubjects.length === 0 ? (
         <div className="p-8 border border-dashed border-[#242c3d] rounded-lg text-center space-y-4 bg-[#11151e]">
-          <p className="text-sm text-[#8c98ad]">No subjects configured in the curriculum yet.</p>
-          <div className="flex items-center justify-center gap-3">
+          <p className="text-sm text-[#8c98ad]">
+            {searchQuery
+              ? `No curriculum elements found matching "${searchQuery}".`
+              : 'No subjects configured in the curriculum yet.'}
+          </p>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
             <button
               onClick={() => {
                 resetForms();
                 setActiveModal('ai_curriculum');
               }}
-              className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded"
+              className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-md flex items-center gap-1.5"
             >
-              ✨ Generate Entire Subject with Groq AI
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Generate Subject with Groq AI</span>
             </button>
             <button
               onClick={() => {
                 resetForms();
                 setActiveModal('subject');
               }}
-              className="px-3 py-2 text-xs font-medium bg-[#191f2c] text-[#8c98ad] hover:text-white border border-[#263145] rounded"
+              className="px-3.5 py-2 text-xs font-medium bg-[#191f2c] text-[#8c98ad] hover:text-white border border-[#263145] rounded-md"
             >
               + Create Manually
             </button>
           </div>
         </div>
       ) : (
-        subjects.map((subject) => (
-          <div key={subject.id} className="space-y-6 bg-[#0f131a] p-5 rounded-lg border border-[#1b212d]">
-            {/* Subject Header with Diagnostic Test & Add Topic button */}
+        filteredSubjects.map((subject) => (
+          <div key={subject.id} className="space-y-6 bg-[#0f131a] p-4 sm:p-6 rounded-lg border border-[#1b212d]">
+            {/* Subject Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#1f2533] gap-3">
               <div>
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                   <span>{subject.name}</span>
                 </h2>
                 {subject.description && (
@@ -421,11 +548,11 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               <div className="flex items-center gap-2 shrink-0 flex-wrap">
                 <button
                   onClick={() => startDiagnosticTest(subject.id, subject.name)}
-                  className="px-3 py-1.5 text-xs font-medium bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border border-amber-700/60 rounded transition-colors flex items-center gap-1.5 shadow-xs"
+                  className="px-3 py-1.5 text-xs font-semibold bg-amber-950/70 hover:bg-amber-900/80 text-amber-200 border border-amber-700/60 rounded-md transition-colors flex items-center gap-1.5 shadow-xs"
                   title="Take baseline test to evaluate prior knowledge across all concepts"
                 >
-                  <span>⚡</span>
-                  <span>Take Baseline Diagnostic Test</span>
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Baseline Diagnostic Test</span>
                 </button>
 
                 <button
@@ -434,9 +561,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                     setSelectedSubjectId(subject.id);
                     setActiveModal('topic');
                   }}
-                  className="px-2.5 py-1.5 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#a4b1c7] border border-[#263145] rounded transition-colors flex items-center gap-1"
+                  className="px-2.5 py-1.5 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-[#a4b1c7] border border-[#263145] rounded-md transition-colors flex items-center gap-1"
                 >
-                  <span>+</span> Add Topic
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Topic</span>
                 </button>
               </div>
             </div>
@@ -444,7 +572,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
             {/* Topics */}
             {subject.topics.length === 0 ? (
               <div className="py-4 text-center text-xs text-[#5f6c82] italic">
-                No topics in this subject yet. Click "+ Add Topic" above.
+                No topics in this subject yet. Click "+ Topic" above.
               </div>
             ) : (
               subject.topics.map((topic) => (
@@ -462,9 +590,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                           setSelectedTopicId(topic.id);
                           setActiveModal('ai_concept');
                         }}
-                        className="px-2 py-0.5 text-[11px] font-medium bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-800/60 rounded transition-colors flex items-center gap-1"
+                        className="px-2 py-1 text-[11px] font-medium bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-800/60 rounded transition-colors flex items-center gap-1"
                       >
-                        <span>✨</span> AI Concept
+                        <Sparkles className="w-3 h-3 text-indigo-400" />
+                        <span>AI Concept</span>
                       </button>
 
                       <button
@@ -474,15 +603,16 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                           setConceptNote(`# ${topic.name}: New Concept\n\n## Overview\nCore pedagogical notes.\n\n## Key Mechanics\nFoundational rules and properties.\n\n## Practice\nTake assessment to confirm mastery.`);
                           setActiveModal('concept');
                         }}
-                        className="px-2 py-0.5 text-[11px] font-medium bg-[#141923] hover:bg-[#1f2636] text-[#8695ad] border border-[#222938] rounded transition-colors"
+                        className="px-2 py-1 text-[11px] font-medium bg-[#141923] hover:bg-[#1f2636] text-[#8695ad] border border-[#222938] rounded transition-colors flex items-center gap-1"
                       >
-                        + Manual Concept
+                        <Plus className="w-3 h-3" />
+                        <span>Concept</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Concepts Container */}
-                  <div className="border border-[#222938] rounded-lg overflow-hidden bg-[#11151e] divide-y divide-[#1e2432]">
+                  <div className="border border-[#202738] rounded-lg overflow-hidden bg-[#11141c] divide-y divide-[#1e2432]">
                     {topic.concepts.length === 0 ? (
                       <div className="p-4 text-center text-xs text-[#525d70]">
                         No concepts created under this topic yet.
@@ -519,9 +649,9 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                             )}
 
                             {concept.prerequisite_concept_name && (
-                              <div className="text-[11px] text-[#857041]">
-                                Requires prerequisite:{' '}
-                                <span className="font-medium text-[#b59b5b]">
+                              <div className="text-[11px] text-[#9c844f] flex items-center gap-1">
+                                <span>Prerequisite:</span>
+                                <span className="font-semibold text-[#cfa868]">
                                   {concept.prerequisite_concept_name}
                                 </span>
                               </div>
@@ -535,22 +665,24 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                                 setSelectedConceptId(concept.id);
                                 setActiveModal('question');
                               }}
-                              className="px-2.5 py-1.5 text-xs font-medium bg-[#141924] hover:bg-[#1f2738] text-[#8695ad] border border-[#222b3d] rounded transition-colors"
+                              className="px-2.5 py-1.5 text-xs font-medium bg-[#141924] hover:bg-[#1f2738] text-[#8695ad] border border-[#222b3d] rounded-md transition-colors"
                               title="Add custom validated question"
                             >
                               + MCQ
                             </button>
                             <button
                               onClick={() => onSelectConcept(concept.id)}
-                              className="px-3 py-1.5 text-xs font-medium bg-[#191f2c] hover:bg-[#222a3b] text-[#9ba7ba] border border-[#283142] rounded transition-colors"
+                              className="px-3 py-1.5 text-xs font-medium bg-[#191f2c] hover:bg-[#222a3b] text-[#9ba7ba] border border-[#283142] rounded-md transition-colors flex items-center gap-1"
                             >
-                              Study note
+                              <BookOpen className="w-3.5 h-3.5" />
+                              <span>Study</span>
                             </button>
                             <button
                               onClick={() => onStartTest(concept.id)}
-                              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                              className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors flex items-center gap-1 shadow-xs"
                             >
-                              Practice
+                              <Zap className="w-3.5 h-3.5" />
+                              <span>Test</span>
                             </button>
                           </div>
                         </div>
@@ -566,18 +698,44 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* --- DIAGNOSTIC ASSESSMENT MODAL / FULL VIEW --- */}
       {activeDiagnosticSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-[#11151e] border border-[#263145] rounded-lg max-w-2xl w-full p-6 space-y-6 shadow-2xl my-8">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="diagnostic-dialog-title"
+          onClick={() => setActiveDiagnosticSubject(null)}
+        >
+          <div
+            className="bg-[#11151f] border border-[#252f44] rounded-xl max-w-2xl w-full p-6 space-y-6 shadow-2xl my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
             {diagnosticLoading ? (
-              <div className="py-12 text-center text-sm text-[#8c98ad]">
-                Loading diagnostic assessment for {activeDiagnosticSubject.name}...
+              <div className="py-12 text-center text-sm text-[#8c98ad] flex flex-col items-center gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+                <span>Loading diagnostic assessment for {activeDiagnosticSubject.name}...</span>
+              </div>
+            ) : diagnosticError && !diagnosticResult ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-rose-950/40 border border-rose-800 text-rose-300 rounded-lg text-xs space-y-1">
+                  <div className="font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400" />
+                    <span>Diagnostic Test Notice</span>
+                  </div>
+                  <p>{diagnosticError}</p>
+                </div>
+                <button
+                  onClick={() => setActiveDiagnosticSubject(null)}
+                  className="px-4 py-2 text-xs font-medium bg-[#1c222e] text-white rounded-md"
+                >
+                  Close
+                </button>
               </div>
             ) : diagnosticResult ? (
               /* Diagnostic Result Report */
               <div className="space-y-6">
                 <div className="border-b border-[#202738] pb-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-base font-bold text-white">
+                    <h3 id="diagnostic-dialog-title" className="text-base font-bold text-white">
                       Diagnostic Baseline Report: {diagnosticResult.subject_name}
                     </h3>
                     <p className="text-xs text-[#7f8ba0] mt-0.5">
@@ -586,9 +744,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                   </div>
                   <button
                     onClick={() => setActiveDiagnosticSubject(null)}
-                    className="text-[#717d91] hover:text-white text-base"
+                    className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                    aria-label="Close dialog"
                   >
-                    ✕
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
@@ -600,23 +759,23 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-rose-400">{diagnosticResult.weak_concept_count}</div>
-                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Needs Immediate Care</div>
+                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Needs Attention</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-emerald-400">{diagnosticResult.strong_concept_count}</div>
-                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Prior Knowledge Mastered</div>
+                    <div className="text-[11px] text-[#717e94] uppercase tracking-wider mt-0.5">Mastered Baseline</div>
                   </div>
                 </div>
 
                 {/* Summary Alert */}
-                <div className="p-3 bg-[#161c28] border border-[#273247] rounded text-xs text-[#a9b7cc]">
+                <div className="p-3 bg-[#151c28] border border-[#263348] rounded-md text-xs text-[#a9b7cc]">
                   {diagnosticResult.summary_message}
                 </div>
 
                 {/* Concept Diagnostic Breakdown Table */}
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold text-[#8c98ad] uppercase tracking-wider">Concept Diagnostic Breakdown</h4>
-                  <div className="border border-[#222938] rounded-lg overflow-hidden divide-y divide-[#1e2432] bg-[#0c0f16]">
+                  <div className="border border-[#202738] rounded-lg overflow-hidden divide-y divide-[#1e2432] bg-[#0c0f16]">
                     {diagnosticResult.concept_breakdown.map((item) => (
                       <div key={item.concept_id} className="p-3 flex items-center justify-between gap-4">
                         <div className="space-y-0.5">
@@ -634,7 +793,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                               setActiveDiagnosticSubject(null);
                               onSelectConcept(item.concept_id);
                             }}
-                            className="px-2.5 py-1 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-blue-400 border border-[#263145] rounded transition-colors"
+                            className="px-2.5 py-1 text-xs font-medium bg-[#1a202c] hover:bg-[#232c3d] text-blue-400 border border-[#263145] rounded-md transition-colors"
                           >
                             Study
                           </button>
@@ -660,9 +819,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                         setActiveDiagnosticSubject(null);
                         onSelectConcept(targetId);
                       }}
-                      className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
+                      className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
                     >
-                      🚀 Start Studying {diagnosticResult.recommended_start_concept_name} →
+                      <span>Start with {diagnosticResult.recommended_start_concept_name}</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -672,7 +832,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
                   <div>
-                    <h3 className="text-sm font-bold text-white">
+                    <h3 id="diagnostic-dialog-title" className="text-sm font-bold text-white">
                       Baseline Diagnostic: {activeDiagnosticSubject.name}
                     </h3>
                     <p className="text-[11px] text-[#717e94]">
@@ -681,9 +841,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                   </div>
                   <button
                     onClick={() => setActiveDiagnosticSubject(null)}
-                    className="text-[#717d91] hover:text-white text-base"
+                    className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                    aria-label="Close dialog"
                   >
-                    ✕
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
@@ -718,14 +879,14 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                               key={opt.id}
                               type="button"
                               onClick={() => handleSelectDiagnosticOption(currentQ.id, opt.id)}
-                              className={`w-full text-left p-3 rounded text-xs transition-colors flex items-start gap-3 border ${
+                              className={`w-full text-left p-3.5 rounded-lg text-xs transition-colors flex items-start gap-3 border ${
                                 isSelected
                                   ? 'bg-amber-950/40 border-amber-600 text-amber-100 font-medium'
                                   : 'bg-[#0b0e14] border-[#202838] text-[#9eb0cc] hover:bg-[#151a24] hover:text-white'
                               }`}
                             >
                               <span
-                                className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold shrink-0 ${
+                                className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold shrink-0 mt-0.5 ${
                                   isSelected
                                     ? 'bg-amber-500 text-black'
                                     : 'bg-[#181f2c] text-[#738299]'
@@ -733,7 +894,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                               >
                                 {opt.id}
                               </span>
-                              <span className="pt-0.5">{opt.text}</span>
+                              <span className="pt-0.5 leading-snug">{opt.text}</span>
                             </button>
                           );
                         })}
@@ -757,7 +918,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                     <button
                       type="button"
                       onClick={() => setDiagnosticCurrentIndex((i) => i + 1)}
-                      className="px-4 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-black rounded transition-colors"
+                      className="px-4 py-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-black rounded-md transition-colors"
                     >
                       Next Question →
                     </button>
@@ -766,16 +927,23 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                       type="button"
                       disabled={diagnosticSubmitting}
                       onClick={handleSubmitDiagnostic}
-                      className="px-5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors disabled:opacity-50"
+                      className="px-5 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-md transition-colors disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      {diagnosticSubmitting ? 'Evaluating Baseline...' : 'Submit Diagnostic Assessment'}
+                      {diagnosticSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      <span>{diagnosticSubmitting ? 'Evaluating Baseline...' : 'Submit Diagnostic'}</span>
                     </button>
                   )}
                 </div>
               </div>
             ) : (
-              <div className="py-8 text-center text-sm text-[#8c98ad]">
-                No questions configured for this subject yet.
+              <div className="py-8 text-center text-sm text-[#8c98ad] space-y-3">
+                <p>No questions configured for this subject yet.</p>
+                <button
+                  onClick={() => setActiveDiagnosticSubject(null)}
+                  className="px-3.5 py-1.5 text-xs bg-[#1a202c] rounded-md text-white"
+                >
+                  Close
+                </button>
               </div>
             )}
           </div>
@@ -786,57 +954,82 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 1. AI Generate Curriculum Modal (Groq) */}
       {activeModal === 'ai_curriculum' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-ai-curriculum-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                  <span>✨</span> AI Curriculum Generator (Groq)
+                <h3 id="modal-ai-curriculum-title" className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <span>AI Curriculum Generator (Groq)</span>
                 </h3>
                 <p className="text-[11px] text-[#717d91]">
                   Instantly drafts topics, concepts, study notes, and MCQs.
                 </p>
               </div>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleAIGenerateCurriculum} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Subject Name *</label>
+                <label htmlFor="ai-sub-name" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Subject Name *
+                </label>
                 <input
+                  id="ai-sub-name"
                   type="text"
                   required
                   value={aiSubjectName}
                   onChange={(e) => setAiSubjectName(e.target.value)}
                   placeholder="e.g. Operating Systems, Distributed Systems, Compiler Design"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Context / Syllabus Scope (optional)</label>
+                <label htmlFor="ai-sub-scope" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Context / Syllabus Scope (optional)
+                </label>
                 <textarea
+                  id="ai-sub-scope"
                   rows={2}
                   value={aiSubjectDesc}
                   onChange={(e) => setAiSubjectDesc(e.target.value)}
                   placeholder="e.g. Focus on memory hierarchy, virtual memory, process scheduling, and concurrency."
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500 resize-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Number of Topics</label>
+                  <label htmlFor="ai-topic-count" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                    Number of Topics
+                  </label>
                   <select
+                    id="ai-topic-count"
                     value={aiTopicCount}
                     onChange={(e) => setAiTopicCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500"
                   >
                     <option value={2}>2 Topics</option>
                     <option value={3}>3 Topics</option>
@@ -845,11 +1038,14 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Concepts per Topic</label>
+                  <label htmlFor="ai-concept-count" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                    Concepts per Topic
+                  </label>
                   <select
+                    id="ai-concept-count"
                     value={aiConceptCount}
                     onChange={(e) => setAiConceptCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500"
                   >
                     <option value={2}>2 Concepts</option>
                     <option value={3}>3 Concepts</option>
@@ -868,9 +1064,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !aiSubjectName.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md transition-colors flex items-center gap-1.5"
                 >
-                  {modalSubmitting ? 'Generating with Groq LLM...' : '✨ Generate Full Curriculum'}
+                  {modalSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{modalSubmitting ? 'Generating with Groq LLM...' : 'Generate Full Curriculum'}</span>
                 </button>
               </div>
             </form>
@@ -880,33 +1077,52 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 2. AI Generate Concept Modal */}
       {activeModal === 'ai_concept' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-ai-concept-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
               <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                  <span>✨</span> AI Concept Generator (Groq)
+                <h3 id="modal-ai-concept-title" className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <span>AI Concept Generator (Groq)</span>
                 </h3>
                 <p className="text-[11px] text-[#717d91]">
                   Generates concept definition, study note, and validated MCQs.
                 </p>
               </div>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleAIGenerateConcept} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Target Topic</label>
+                <label htmlFor="ai-target-topic" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Target Topic
+                </label>
                 <select
+                  id="ai-target-topic"
                   value={selectedTopicId}
                   onChange={(e) => setSelectedTopicId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500"
                 >
                   {subjects.map((s) =>
                     s.topics.map((t) => (
@@ -919,14 +1135,17 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Concept Name / Prompt *</label>
+                <label htmlFor="ai-concept-prompt" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Concept Name / Prompt *
+                </label>
                 <input
+                  id="ai-concept-prompt"
                   type="text"
                   required
                   value={aiConceptHint}
                   onChange={(e) => setAiConceptHint(e.target.value)}
                   placeholder="e.g. Page Replacement Algorithms, LRU Cache, Semaphore Mutex"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -941,9 +1160,10 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !aiConceptHint.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-md transition-colors flex items-center gap-1.5"
                 >
-                  {modalSubmitting ? 'Generating with Groq...' : '✨ Generate Concept & MCQs'}
+                  {modalSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{modalSubmitting ? 'Generating with Groq...' : 'Generate Concept & MCQs'}</span>
                 </button>
               </div>
             </form>
@@ -953,40 +1173,61 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 3. Manual Create Subject Modal */}
       {activeModal === 'subject' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-subject-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
-              <h3 className="text-sm font-bold text-white">Create New Subject</h3>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <h3 id="modal-subject-title" className="text-sm font-bold text-white">Create New Subject</h3>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleCreateSubject} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Subject Name *</label>
+                <label htmlFor="manual-sub-name" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Subject Name *
+                </label>
                 <input
+                  id="manual-sub-name"
                   type="text"
                   required
                   value={subjectName}
                   onChange={(e) => setSubjectName(e.target.value)}
                   placeholder="e.g. Distributed Systems"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Description (optional)</label>
+                <label htmlFor="manual-sub-desc" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Description (optional)
+                </label>
                 <textarea
+                  id="manual-sub-desc"
                   rows={2}
                   value={subjectDescription}
                   onChange={(e) => setSubjectDescription(e.target.value)}
                   placeholder="e.g. Consensus protocols, replication, CAP theorem, and distributed storage."
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
@@ -1001,7 +1242,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !subjectName.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors"
                 >
                   {modalSubmitting ? 'Creating...' : 'Create Subject'}
                 </button>
@@ -1013,26 +1254,44 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 4. Manual Create Topic Modal */}
       {activeModal === 'topic' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-topic-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-md w-full p-6 space-y-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
-              <h3 className="text-sm font-bold text-white">Add Topic to Subject</h3>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <h3 id="modal-topic-title" className="text-sm font-bold text-white">Add Topic to Subject</h3>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleCreateTopic} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Target Subject *</label>
+                <label htmlFor="manual-topic-sub" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Target Subject *
+                </label>
                 <select
+                  id="manual-topic-sub"
                   value={selectedSubjectId}
                   onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 >
                   {subjects.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
@@ -1041,25 +1300,31 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Topic Name *</label>
+                <label htmlFor="manual-topic-name" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Topic Name *
+                </label>
                 <input
+                  id="manual-topic-name"
                   type="text"
                   required
                   value={topicName}
                   onChange={(e) => setTopicName(e.target.value)}
                   placeholder="e.g. Consensus Algorithms"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Description (optional)</label>
+                <label htmlFor="manual-topic-desc" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Description (optional)
+                </label>
                 <textarea
+                  id="manual-topic-desc"
                   rows={2}
                   value={topicDescription}
                   onChange={(e) => setTopicDescription(e.target.value)}
                   placeholder="e.g. Paxos, Raft leader election, and log replication."
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
@@ -1074,7 +1339,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !topicName.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors"
                 >
                   {modalSubmitting ? 'Adding...' : 'Add Topic'}
                 </button>
@@ -1086,49 +1351,73 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 5. Manual Create Concept Modal */}
       {activeModal === 'concept' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-lg w-full p-6 space-y-4 shadow-xl my-8">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-concept-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
-              <h3 className="text-sm font-bold text-white">Create New Concept</h3>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <h3 id="modal-concept-title" className="text-sm font-bold text-white">Create New Concept</h3>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleCreateConcept} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Concept Name *</label>
+                <label htmlFor="manual-c-name" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Concept Name *
+                </label>
                 <input
+                  id="manual-c-name"
                   type="text"
                   required
                   value={conceptName}
                   onChange={(e) => setConceptName(e.target.value)}
                   placeholder="e.g. Raft Leader Election"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Description</label>
+                <label htmlFor="manual-c-desc" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Description
+                </label>
                 <input
+                  id="manual-c-desc"
                   type="text"
                   value={conceptDescription}
                   onChange={(e) => setConceptDescription(e.target.value)}
                   placeholder="e.g. Randomized timers, heartbeats, and majority vote quorum."
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Prerequisite Concept (optional)</label>
+                <label htmlFor="manual-c-prereq" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Prerequisite Concept (optional)
+                </label>
                 <select
+                  id="manual-c-prereq"
                   value={conceptPrereqId}
                   onChange={(e) => setConceptPrereqId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="">None (Standalone concept)</option>
                   {allConcepts.map((c) => (
@@ -1138,12 +1427,15 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Initial Study Note (Markdown)</label>
+                <label htmlFor="manual-c-note" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Initial Study Note (Markdown)
+                </label>
                 <textarea
+                  id="manual-c-note"
                   rows={6}
                   value={conceptNote}
                   onChange={(e) => setConceptNote(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono bg-[#0b0e14] border border-[#252f42] rounded text-[#d6deeb] focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-xs font-mono bg-[#0b0e14] border border-[#252f42] rounded-md text-[#d6deeb] focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
@@ -1158,7 +1450,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !conceptName.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors"
                 >
                   {modalSubmitting ? 'Creating...' : 'Create Concept & Note'}
                 </button>
@@ -1170,31 +1462,49 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
       {/* 6. Manual Create Question Modal */}
       {activeModal === 'question' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-[#121620] border border-[#252e40] rounded-lg max-w-xl w-full p-6 space-y-4 shadow-xl my-8">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-question-title"
+          onClick={resetForms}
+        >
+          <div
+            className="bg-[#121620] border border-[#252e40] rounded-xl max-w-xl w-full p-6 space-y-4 shadow-xl my-8"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-3 border-b border-[#1f2636]">
               <div>
-                <h3 className="text-sm font-bold text-white">Add MCQ to Question Pool</h3>
+                <h3 id="modal-question-title" className="text-sm font-bold text-white">Add MCQ to Question Pool</h3>
                 <p className="text-[11px] text-[#717d91]">
                   Strict ExamBuddy pedagogical validator runs on backend before insertion.
                 </p>
               </div>
-              <button onClick={resetForms} className="text-[#717d91] hover:text-white text-base">✕</button>
+              <button
+                onClick={resetForms}
+                className="p-1 rounded text-[#717d91] hover:text-white text-base"
+                aria-label="Close dialog"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {modalError && (
-              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-md">
                 {modalError}
               </div>
             )}
 
             <form onSubmit={handleCreateQuestion} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Target Concept *</label>
+                <label htmlFor="q-target-c" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Target Concept *
+                </label>
                 <select
+                  id="q-target-c"
                   value={selectedConceptId}
                   onChange={(e) => setSelectedConceptId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                 >
                   {allConcepts.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -1203,32 +1513,38 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Question Prompt *</label>
+                <label htmlFor="q-prompt-text" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Question Prompt *
+                </label>
                 <textarea
+                  id="q-prompt-text"
                   rows={2}
                   required
                   value={qText}
                   onChange={(e) => setQText(e.target.value)}
                   placeholder="e.g. During Raft leader election, what condition must a candidate satisfy to win?"
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-[#8c98ad]">Options (4 distinct choices) *</label>
+                <span className="block text-xs font-semibold text-[#8c98ad]">Options (4 distinct choices) *</span>
                 {(['A', 'B', 'C', 'D'] as const).map((letter) => {
                   const val = letter === 'A' ? qOptionA : letter === 'B' ? qOptionB : letter === 'C' ? qOptionC : qOptionD;
                   const setVal = letter === 'A' ? setQOptionA : letter === 'B' ? setQOptionB : letter === 'C' ? setQOptionC : setQOptionD;
                   return (
                     <div key={letter} className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-[#627087] w-5">{letter}.</span>
+                      <label htmlFor={`opt-field-${letter}`} className="text-xs font-bold text-[#627087] w-5">
+                        {letter}.
+                      </label>
                       <input
+                        id={`opt-field-${letter}`}
                         type="text"
                         required
                         value={val}
                         onChange={(e) => setVal(e.target.value)}
                         placeholder={`Option ${letter} text`}
-                        className="flex-1 px-3 py-1.5 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                        className="flex-1 px-3 py-1.5 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                       />
                     </div>
                   );
@@ -1237,11 +1553,14 @@ export const LearnPage: React.FC<LearnPageProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Correct Answer *</label>
+                  <label htmlFor="q-correct-opt" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                    Correct Answer *
+                  </label>
                   <select
+                    id="q-correct-opt"
                     value={qCorrect}
                     onChange={(e) => setQCorrect(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500 font-bold"
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500 font-bold"
                   >
                     <option value="A">Option A</option>
                     <option value="B">Option B</option>
@@ -1251,11 +1570,14 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Difficulty</label>
+                  <label htmlFor="q-difficulty-sel" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                    Difficulty
+                  </label>
                   <select
+                    id="q-difficulty-sel"
                     value={qDifficulty}
                     onChange={(e) => setQDifficulty(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500"
+                    className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500"
                   >
                     <option value="easy">Easy</option>
                     <option value="medium">Medium</option>
@@ -1265,14 +1587,17 @@ export const LearnPage: React.FC<LearnPageProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#8c98ad] mb-1">Explanation (Rationale) *</label>
+                <label htmlFor="q-expl-text" className="block text-xs font-semibold text-[#8c98ad] mb-1">
+                  Explanation (Rationale) *
+                </label>
                 <textarea
+                  id="q-expl-text"
                   rows={2}
                   required
                   value={qExplanation}
                   onChange={(e) => setQExplanation(e.target.value)}
                   placeholder="Explain why the chosen option is correct and why distractors are invalid."
-                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded text-white focus:outline-none focus:border-blue-500 resize-none"
+                  className="w-full px-3 py-2 text-xs bg-[#0b0e14] border border-[#252f42] rounded-md text-white focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>
 
@@ -1287,7 +1612,7 @@ export const LearnPage: React.FC<LearnPageProps> = ({
                 <button
                   type="submit"
                   disabled={modalSubmitting || !qText.trim() || !qExplanation.trim()}
-                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors"
+                  className="px-4 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors"
                 >
                   {modalSubmitting ? 'Validating...' : 'Validate & Add Question'}
                 </button>
@@ -1299,5 +1624,3 @@ export const LearnPage: React.FC<LearnPageProps> = ({
     </div>
   );
 };
-
-
